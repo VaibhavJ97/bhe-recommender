@@ -102,7 +102,8 @@ export default async function handler(req, res) {
 
   try {
     const {
-      q_lookup,           // W/m, looked up from map click on frontend
+      q_lookup,           // W/m, looked up from map click (this is the 100yr sustainable value)
+      q_all,              // {q_50_depleting, q_50_sustainable, q_100_sustainable} - all 3 horizons
       location,           // { lat, lng, label?: string }
       demand_kW,
       budget_eur,
@@ -129,6 +130,42 @@ export default async function handler(req, res) {
     const power_actual_kW = calculatePower(depth, q_used);
     const cost = calculateCost(depth, useCases);
     cost.cost_per_kW = Math.round(cost.total / power_actual_kW);
+
+    // Compute time-horizon comparison at the same recommended depth
+    const horizons = [];
+    if (q_all) {
+      if (typeof q_all.q_50_depleting === 'number' && q_all.q_50_depleting > 0) {
+        horizons.push({
+          key: '50yr_depleting',
+          label: '50-year depleting',
+          mode: 'depleting',
+          q: Math.round(q_all.q_50_depleting * 100) / 100,
+          power_kW: Math.round((depth * q_all.q_50_depleting) / 100) / 10,
+          note: 'Higher initial output, but the ground cools and the system loses effectiveness over decades.'
+        });
+      }
+      if (typeof q_all.q_50_sustainable === 'number' && q_all.q_50_sustainable > 0) {
+        horizons.push({
+          key: '50yr_sustainable',
+          label: '50-year sustainable',
+          mode: 'sustainable',
+          q: Math.round(q_all.q_50_sustainable * 100) / 100,
+          power_kW: Math.round((depth * q_all.q_50_sustainable) / 100) / 10,
+          note: 'Safe operation for 50 years with minimal ground cooling.'
+        });
+      }
+      if (typeof q_all.q_100_sustainable === 'number' && q_all.q_100_sustainable > 0) {
+        horizons.push({
+          key: '100yr_sustainable',
+          label: '100-year sustainable',
+          mode: 'sustainable',
+          q: Math.round(q_all.q_100_sustainable * 100) / 100,
+          power_kW: Math.round((depth * q_all.q_100_sustainable) / 100) / 10,
+          note: 'Fully renewable. Ground temperature stays stable forever.',
+          recommended: true
+        });
+      }
+    }
 
     const budgetStatus = budget_eur ? {
       provided: budget_eur,
@@ -220,7 +257,8 @@ Interpret the numbers, do not just repeat them.`;
         depth_m: depth,
         power_kW: power_actual_kW,
         cost: cost,
-        budget_status: budgetStatus
+        budget_status: budgetStatus,
+        horizons: horizons
       },
       ai_explanation: aiExplanation || 'AI explanation unavailable. The calculation above is based on data from the underlying thesis. For best results, also consider local geology and groundwater conditions.'
     });
