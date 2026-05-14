@@ -1,0 +1,10 @@
+{
+  "name": "bhe-recommender",
+  "version": "1.0.0",
+  "description": "Borehole drilling site recommender for Germany. Calculates depth, output and cost for shallow ground-source heat pumps, grounded in MSc thesis research from KIT.",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=20.x"
+  }
+}

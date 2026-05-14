@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BHE Recommender - Borehole drilling site recommender</title>
+<meta name="description" content="Calculate the recommended borehole depth, expected geothermal output, and estimated cost for a shallow ground-source heat pump in Germany, grounded in Vaibhav Jaiswal's Master's thesis at KIT." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg: #faf7f2;
+  --bg-alt: #f1ebe1;
+  --paper: #fffaf3;
+  --ink: #1a1612;
+  --ink-soft: #3d3528;
+  --ink-faint: #7a6e5c;
+  --accent: #b8501e;
+  --accent-deep: #7a2e10;
+  --accent-soft: #e8d4cb;
+  --line: #d9cfc2;
+  --good: #2d6b3a;
+  --warn: #b56e1a;
+  --bad: #a52a2a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.55;
+}
+
+/* ============ HEADER ============ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 40px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-family: 'Fraunces', serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.brand em {
+  font-style: italic;
+  font-weight: 300;
+  color: var(--accent);
+}
+.tagline {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.back-link {
+  font-size: 0.85rem;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.back-link:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+@media (max-width: 600px) {
+  .topbar { padding: 16px 20px; }
+}
+
+/* ============ MAIN LAYOUT ============ */
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 40px 60px;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 48px;
+}
+.hero .eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 18px;
+}
+.hero h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-weight: 400;
+  margin: 0 0 16px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--accent-deep);
+  font-weight: 300;
+}
+.hero p {
+  max-width: 640px;
+  margin: 0 auto;
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+/* ============ FORM CARD ============ */
+.form-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 36px 40px;
+  margin-bottom: 32px;
+}
+.form-card h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.form-card .subtitle {
+  color: var(--ink-faint);
+  font-size: 0.92rem;
+  margin-bottom: 28px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px 28px;
+}
+.form-row {
+  display: flex;
+  flex-direction: column;
+}
+.form-row.full {
+  grid-column: 1 / -1;
+}
+
+label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+select, input[type="number"], input[type="text"] {
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 0.97rem;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  transition: border-color 0.15s;
+}
+select:focus, input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231a1612' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+.hint {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  margin-top: 6px;
+}
+
+.checkbox-group {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  user-select: none;
+}
+.checkbox-item input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.form-actions {
+  margin-top: 28px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.05s;
+  border: 1px solid transparent;
+}
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.btn-ghost:hover { background: var(--ink); color: var(--bg); }
+
+@media (max-width: 700px) {
+  main { padding: 24px 20px 40px; }
+  .form-card { padding: 26px 22px; }
+  .form-grid { grid-template-columns: 1fr; gap: 18px; }
+  .hero { margin-bottom: 32px; }
+}
+
+/* ============ RESULT CARD ============ */
+.result-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  margin-bottom: 32px;
+  overflow: hidden;
+  animation: slideIn 0.4s ease;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result-header {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 26px 32px;
+  position: relative;
+  overflow: hidden;
+}
+.result-header::before {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; width: 50%;
+  background: radial-gradient(circle at 80% 50%, var(--accent) 0%, transparent 65%);
+  opacity: 0.2;
+  pointer-events: none;
+}
+.result-header .eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+}
+.result-header h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  margin: 0;
+  position: relative;
+  z-index: 1;
+}
+.result-header h2 em {
+  font-style: italic;
+  color: var(--accent);
+  font-weight: 300;
+}
+.result-header .region-tag {
+  font-size: 0.88rem;
+  color: rgba(250, 247, 242, 0.7);
+  margin-top: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.result-headline {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+.result-headline .cell {
+  padding: 28px 26px;
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+.result-headline .cell:last-child { border-right: none; }
+.result-headline .num {
+  font-family: 'Fraunces', serif;
+  font-size: 2.4rem;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.result-headline .num small {
+  font-size: 1rem;
+  color: var(--ink-soft);
+}
+.result-headline .lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+@media (max-width: 600px) {
+  .result-headline { grid-template-columns: 1fr; }
+  .result-headline .cell { border-right: none; border-bottom: 1px solid var(--line); }
+  .result-headline .cell:last-child { border-bottom: none; }
+}
+
+.result-body {
+  padding: 28px 32px;
+}
+.result-body h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--ink);
+}
+.result-body h3:not(:first-child) {
+  margin-top: 26px;
+}
+
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+.cost-table td {
+  padding: 9px 0;
+  font-size: 0.93rem;
+  border-bottom: 1px dashed var(--line);
+}
+.cost-table td:last-child {
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ink-soft);
+}
+.cost-table tr.total td {
+  border-bottom: 2px solid var(--ink);
+  padding-top: 14px;
+  padding-bottom: 14px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ink);
+}
+.cost-table tr.subtotal td {
+  border-top: 1px solid var(--ink);
+  padding-top: 12px;
+}
+.cost-range {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  margin-left: 6px;
+}
+
+.budget-banner {
+  margin-top: 18px;
+  padding: 14px 18px;
+  border-radius: 2px;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.budget-banner.fits {
+  background: #e8f1e8;
+  border-left: 4px solid var(--good);
+  color: #1a3d22;
+}
+.budget-banner.over {
+  background: #f5e8e0;
+  border-left: 4px solid var(--bad);
+  color: #5a1a1a;
+}
+
+.ai-explanation {
+  background: var(--bg-alt);
+  padding: 22px 26px;
+  margin-top: 8px;
+  border-left: 3px solid var(--accent);
+  font-size: 0.97rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+.ai-explanation .ai-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 6px;
+}
+.detail-item {
+  background: var(--bg);
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+}
+.detail-item .lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: block;
+  margin-bottom: 4px;
+}
+.detail-item .val {
+  font-size: 0.95rem;
+  color: var(--ink);
+  font-weight: 500;
+}
+@media (max-width: 600px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .result-body { padding: 22px 22px; }
+}
+
+/* ============ LOADER ============ */
+.loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.error-banner {
+  background: #fce8e0;
+  border: 1px solid var(--bad);
+  color: #5a1a1a;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  font-size: 0.92rem;
+}
+
+/* ============ FOOTER ============ */
+footer {
+  text-align: center;
+  padding: 28px 20px;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+footer a { color: var(--ink-soft); }
+
+/* ============ INFO CALLOUT ============ */
+.info-callout {
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  padding: 12px 16px;
+  background: var(--bg-alt);
+  border-left: 3px solid var(--ink-faint);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div>
+    <a href="https://vaibhavj97.vercel.app" class="brand">BHE <em>Recommender</em></a>
+    <div class="tagline">Drilling site recommender for shallow geothermal</div>
+  </div>
+  <a href="https://vaibhavj97.vercel.app" class="back-link">Back to portfolio</a>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="eyebrow">→ Geothermal planning tool</div>
+    <h1>Should you drill a <em>borehole</em> here?</h1>
+    <p>Calculate the recommended borehole depth, expected sustainable thermal output, and total installation cost for a shallow ground-source heat pump in Germany. Grounded in real BHE physics and CMIP6 climate projections from a Master's thesis at KIT.</p>
+  </section>
+
+  <div class="info-callout">
+    Results are estimates based on regional averages from the underlying thesis dataset. Local geology, groundwater conditions, and permitting requirements can materially change the real-world figures. Use this as a first-pass feasibility study, not a final design.
+  </div>
+
+  <section class="form-card">
+    <h2>Your site & demand</h2>
+    <p class="subtitle">Fill in what you know. All fields except budget are required.</p>
+
+    <form id="recommend-form" autocomplete="off">
+
+      <div class="form-grid">
+
+        <div class="form-row">
+          <label for="region">Region in Germany</label>
+          <select id="region" required>
+            <option value="">Select a region...</option>
+            <option value="southwest">Southwest (Baden-Württemberg, Rhine Valley)</option>
+            <option value="munich">Munich and Bavaria</option>
+            <option value="berlin">Berlin and Brandenburg</option>
+            <option value="frankfurt">Frankfurt and Rhine-Main</option>
+            <option value="rhine_ruhr">Rhine-Ruhr (NRW)</option>
+            <option value="west">Western Germany (Saarland, RLP)</option>
+            <option value="east">Eastern Germany (Saxony, Thuringia)</option>
+            <option value="north">Northern Germany (Lower Saxony, etc.)</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="scenario">Climate scenario (target year 2100)</label>
+          <select id="scenario">
+            <option value="ssp585" selected>SSP 5-8.5 (high emissions, realistic)</option>
+            <option value="ssp245">SSP 2-4.5 (moderate emissions, conservative)</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <label for="demand">Heating demand (kW)</label>
+          <input type="number" id="demand" min="1" max="100" step="0.5" placeholder="e.g. 8" required>
+          <div class="hint">Rough guide: 6-10 kW for a typical insulated single-family home, 12-20 kW for an older or larger house.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="budget">Budget (EUR, optional)</label>
+          <input type="number" id="budget" min="0" step="500" placeholder="e.g. 25000">
+          <div class="hint">Leave empty if you have no fixed budget.</div>
+        </div>
+
+        <div class="form-row full">
+          <label>What will the system do?</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item">
+              <input type="checkbox" id="use-heating" checked disabled>
+              Heating (always included)
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" id="use-cooling">
+              Cooling capability
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" id="use-hotwater">
+              Domestic hot water
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+          Calculate recommendation
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+        </button>
+        <button type="button" class="btn btn-ghost" id="reset-btn">Reset</button>
+      </div>
+
+    </form>
+  </section>
+
+  <div id="result-container"></div>
+
+</main>
+
+<footer>
+  Built by <a href="https://vaibhavj97.vercel.app">Vaibhav Jaiswal</a>.
+  Calculation methodology from MSc thesis at KIT (2026). AI explanations via Google Gemini.
+  Cost estimates are indicative only.
+</footer>
+
+<script>
+(function () {
+  const form = document.getElementById('recommend-form');
+  const resultContainer = document.getElementById('result-container');
+  const submitBtn = document.getElementById('submit-btn');
+  const resetBtn = document.getElementById('reset-btn');
+
+  resetBtn.addEventListener('click', () => {
+    form.reset();
+    document.getElementById('scenario').value = 'ssp585';
+    document.getElementById('use-heating').checked = true;
+    resultContainer.innerHTML = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const region = document.getElementById('region').value;
+    const scenario = document.getElementById('scenario').value;
+    const demand_kW = parseFloat(document.getElementById('demand').value);
+    const budgetRaw = document.getElementById('budget').value;
+    const budget_eur = budgetRaw ? parseFloat(budgetRaw) : null;
+    const useCases = {
+      cooling: document.getElementById('use-cooling').checked,
+      hotWater: document.getElementById('use-hotwater').checked
+    };
+
+    if (!region || !demand_kW) {
+      showError('Please fill in region and heating demand.');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    resultContainer.innerHTML = '<div class="form-card"><div class="loader"><div class="spinner"></div><span>Running calculation and generating AI explanation...</span></div></div>';
+
+    try {
+      const resp = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region, demand_kW, budget_eur, useCases, scenario })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        showError(err.error || 'Calculation failed. Please try again.');
+        submitBtn.disabled = false;
+        return;
+      }
+
+      const data = await resp.json();
+      renderResult(data);
+    } catch (err) {
+      console.error(err);
+      showError('Network error. Please check your connection and try again.');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  function showError(msg) {
+    resultContainer.innerHTML = `<div class="error-banner">${escapeHtml(msg)}</div>`;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  function fmt(n) {
+    return n.toLocaleString('en-US');
+  }
+
+  function renderResult(data) {
+    const r = data.recommendation;
+    const reg = data.region;
+    const c = r.cost;
+    const bs = r.budget_status;
+    const scenarioLabel = r.scenario_used === 'ssp585' ? 'SSP 5-8.5 high emissions' : 'SSP 2-4.5 moderate emissions';
+
+    let budgetHTML = '';
+    if (bs) {
+      if (bs.fits) {
+        budgetHTML = `<div class="budget-banner fits">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>Within budget. Estimated cost is EUR ${fmt(c.total)}, leaving roughly EUR ${fmt(bs.delta)} headroom from your EUR ${fmt(bs.provided)} budget.</span>
+        </div>`;
+      } else {
+        budgetHTML = `<div class="budget-banner over">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Over budget by approximately EUR ${fmt(Math.abs(bs.delta))}. Consider reducing demand, splitting the project into phases, or planning a slightly longer payback period.</span>
+        </div>`;
+      }
+    }
+
+    const html = `
+      <div class="result-card">
+        <div class="result-header">
+          <div class="eyebrow">→ Recommendation</div>
+          <h2>Drill <em>${r.depth_m} m</em> for ${r.power_kW} kW sustainable</h2>
+          <div class="region-tag">${escapeHtml(reg.label)} · ${scenarioLabel} · ${reg.yield_class} yield class</div>
+        </div>
+
+        <div class="result-headline">
+          <div class="cell">
+            <div class="num">${r.depth_m}<small> m</small></div>
+            <div class="lbl">Recommended depth</div>
+          </div>
+          <div class="cell">
+            <div class="num">${r.power_kW}<small> kW</small></div>
+            <div class="lbl">Sustainable output</div>
+          </div>
+          <div class="cell">
+            <div class="num">€${fmt(c.total)}</div>
+            <div class="lbl">Total estimated cost</div>
+          </div>
+        </div>
+
+        <div class="result-body">
+
+          <h3>Cost breakdown</h3>
+          <table class="cost-table">
+            <tr>
+              <td>Drilling (${r.depth_m} m at €${Math.round(c.drilling / r.depth_m)} / m)</td>
+              <td>€${fmt(c.drilling)} <span class="cost-range">(range €${fmt(c.drilling_range[0])} - €${fmt(c.drilling_range[1])})</span></td>
+            </tr>
+            <tr>
+              <td>Heat pump unit</td>
+              <td>€${fmt(c.heat_pump)}</td>
+            </tr>
+            ${c.cooling_addon > 0 ? `<tr><td>Reversible cooling add-on</td><td>€${fmt(c.cooling_addon)}</td></tr>` : ''}
+            ${c.hot_water_addon > 0 ? `<tr><td>Domestic hot water integration</td><td>€${fmt(c.hot_water_addon)}</td></tr>` : ''}
+            <tr>
+              <td>Permits, installation, system connection</td>
+              <td>€${fmt(c.ancillary)}</td>
+            </tr>
+            <tr class="total">
+              <td>Total estimated</td>
+              <td>€${fmt(c.total)}</td>
+            </tr>
+          </table>
+
+          ${budgetHTML}
+
+          <h3>Why this depth</h3>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span class="lbl">Region yield</span>
+              <span class="val">${reg.q_used} W/m sustainable</span>
+            </div>
+            <div class="detail-item">
+              <span class="lbl">Yield range (low - high)</span>
+              <span class="val">${reg.q_range[0]} - ${reg.q_range[1]} W/m</span>
+            </div>
+            <div class="detail-item">
+              <span class="lbl">Cost per kW capacity</span>
+              <span class="val">€${fmt(c.cost_per_kW)} / kW</span>
+            </div>
+            <div class="detail-item">
+              <span class="lbl">Scenario</span>
+              <span class="val">${scenarioLabel}</span>
+            </div>
+          </div>
+
+          <h3>What this means for your site</h3>
+          <div class="ai-explanation">
+            <span class="ai-label">AI interpretation</span>
+            ${escapeHtml(data.ai_explanation).split('\n\n').map(p => `<p style="margin: 0 0 8px;">${p}</p>`).join('')}
+          </div>
+
+          <h3>Regional context</h3>
+          <p style="font-size: 0.93rem; color: var(--ink-soft); line-height: 1.65;">${escapeHtml(reg.notes)}</p>
+
+        </div>
+      </div>
+    `;
+
+    resultContainer.innerHTML = html;
+
+    // Scroll the new result into view smoothly
+    setTimeout(() => {
+      resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  }
+
+})();
+</script>
+
+</body>
+</html>
