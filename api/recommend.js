@@ -21,7 +21,7 @@ in Germany.
 
 # Style rules
 
-1. Keep your explanation to 3-5 short sentences. Be specific and cite numbers.
+1. Write 4-6 complete sentences. Be specific and cite numbers. Make sure every sentence is grammatically complete with a period at the end.
 2. Use simple English. No jargon unless necessary.
 3. Never use em dashes. Use commas or short sentences.
 4. Never use emojis.
@@ -29,6 +29,7 @@ in Germany.
 6. Mention one practical consideration (e.g. local geology, groundwater, regulations, urban siting).
 7. Do not invent costs or technical numbers; only explain the ones given to you.
 8. Always respond in clear, professional English.
+9. Structure: open with a one-sentence verdict on the site's potential, then explain why, then climate context, then a practical consideration, then close.
 `;
 
 // =============================================================================
@@ -203,13 +204,13 @@ ${budgetStatus ? `User budget: EUR ${budget_eur.toLocaleString('en-US')}, fits w
 
 ${calcSummary}
 
-Please write a 3-5 sentence personalized recommendation that:
-- Comments on whether this specific location is favorable for BHE (based on the yield value relative to German averages of 43-50 W/m)
-- Mentions how climate change affects this recommendation by 2100
-- Notes one practical consideration (geology, groundwater, regulations, distance to neighbors, urban density)
-- Briefly addresses cost reasonableness
+Write 4-6 complete sentences (each ending in a period) covering:
+1. Verdict: is this a good, average, or weak site for a BHE? Reference the W/m value relative to German averages of 43-50 W/m for sustainable extraction.
+2. Climate context: how does climate change between now and 2100 affect this recommendation? Mention warming numbers if helpful.
+3. Practical consideration: pick ONE relevant factor (local geology, groundwater, urban density, permits, regulations, neighboring properties).
+4. Cost reasonableness: comment on whether the cost per kW is reasonable for this output.
 
-Interpret the numbers, do not just repeat them.`;
+Interpret the numbers, do not just repeat them. Make sure your last sentence is grammatically complete with a period.`;
 
         const geminiResponse = await fetch(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
@@ -219,7 +220,7 @@ Interpret the numbers, do not just repeat them.`;
             body: JSON.stringify({
               system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
+              generationConfig: { temperature: 0.4, maxOutputTokens: 1200 },
               safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
