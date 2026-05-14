@@ -412,6 +412,52 @@ select {
 }
 .btn-ghost:hover { background: var(--ink); color: var(--bg); }
 
+/* ============ RESULT ACTIONS BAR ============ */
+.result-actions {
+  display: flex;
+  gap: 12px;
+  padding: 18px 30px;
+  background: var(--bg-alt);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.result-actions .actions-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-right: auto;
+}
+.btn-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 2px;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  transition: background 0.15s, transform 0.05s;
+}
+.btn-pdf:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+.btn-pdf:active { transform: scale(0.98); }
+.btn-pdf:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-pdf .pdf-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
 /* ============ RESULT CARD ============ */
 .result-card {
   background: var(--paper);
@@ -842,6 +888,8 @@ footer a { color: var(--ink-soft); }
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/chroma-js@2.4.2/chroma.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <script>
 (function () {
@@ -868,6 +916,7 @@ footer a { color: var(--ink-soft); }
   let currentClick = null;  // { lat, lng, q }
   let mapOverlay = null;    // The colored raster overlay
   let germanyLayer = null;
+  let lastResult = null;    // last successful calculation result (for PDF generation)
 
   // Color scale (viridis - matches thesis page default)
   const COLORS = ['#440154','#482878','#3e4a89','#31688e','#26828e','#1f9e89','#35b779','#6dcd59','#b4dd2c','#fde725'];
@@ -1261,11 +1310,19 @@ footer a { color: var(--ink-soft); }
     }
 
     const html = `
-      <div class="result-card">
+      <div class="result-card" id="result-card">
         <div class="result-header">
           <div class="eyebrow">→ Recommendation for your site</div>
           <h2>Drill <em>${r.depth_m} m</em> for ${r.power_kW} kW sustainable</h2>
           <div class="site-tag">${s.coordinates.lat.toFixed(3)}°N, ${s.coordinates.lng.toFixed(3)}°E · ${s.q_used} W/m · ${s.yield_label} · ${scenarioLabel} · ${statLabel}</div>
+        </div>
+
+        <div class="result-actions">
+          <span class="actions-label">→ Take it with you</span>
+          <button class="btn-pdf" id="btn-download-pdf">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download PDF report
+          </button>
         </div>
 
         <div class="result-headline">
@@ -1345,6 +1402,16 @@ footer a { color: var(--ink-soft); }
     `;
 
     resultContainer.innerHTML = html;
+
+    // Store result data for PDF generation
+    lastResult = data;
+
+    // Wire up the PDF download button
+    const pdfBtn = document.getElementById('btn-download-pdf');
+    if (pdfBtn) {
+      pdfBtn.addEventListener('click', () => generatePDF(data));
+    }
+
     setTimeout(() => {
       resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 80);
@@ -1354,7 +1421,478 @@ footer a { color: var(--ink-soft); }
   document.getElementById('scenario').addEventListener('change', refreshOverlay);
   document.getElementById('statistic').addEventListener('change', refreshOverlay);
 
-  // ============ INIT ============
+  // ============ PDF GENERATION ============
+  async function generatePDF(data) {
+    const pdfBtn = document.getElementById('btn-download-pdf');
+    if (!pdfBtn) return;
+
+    // Disable button + show spinner
+    const originalHtml = pdfBtn.innerHTML;
+    pdfBtn.disabled = true;
+    pdfBtn.innerHTML = '<span class="pdf-spinner"></span> Generating PDF...';
+
+    try {
+      // Capture map screenshot first
+      const mapImage = await captureMapImage();
+
+      // Build the PDF using jsPDF
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait',
+      });
+
+      buildPDFContent(doc, data, mapImage);
+
+      // Generate filename
+      const ts = new Date().toISOString().split('T')[0];
+      const lat = data.site.coordinates.lat.toFixed(2);
+      const lng = data.site.coordinates.lng.toFixed(2);
+      const filename = `BHE-report-${lat}N-${lng}E-${ts}.pdf`;
+
+      doc.save(filename);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      alert('Sorry, PDF generation failed. Please try again or take a screenshot of the result.');
+    } finally {
+      pdfBtn.disabled = false;
+      pdfBtn.innerHTML = originalHtml;
+    }
+  }
+
+  async function captureMapImage() {
+    // Capture the current Leaflet map as a PNG using html2canvas
+    const mapEl = document.getElementById('map');
+    if (!mapEl) return null;
+
+    try {
+      const canvas = await html2canvas(mapEl, {
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        scale: 1.5,
+        backgroundColor: '#f1ebe1',
+      });
+      return canvas.toDataURL('image/jpeg', 0.85);
+    } catch (err) {
+      console.warn('Map capture failed:', err);
+      return null;
+    }
+  }
+
+  function buildPDFContent(doc, data, mapImage) {
+    const r = data.recommendation;
+    const s = data.site;
+    const c = r.cost;
+    const horizons = r.horizons || [];
+
+    // Colors matching portfolio theme
+    const COL_INK = [26, 22, 18];
+    const COL_INK_SOFT = [61, 53, 40];
+    const COL_INK_FAINT = [122, 110, 92];
+    const COL_ACCENT = [184, 80, 30];
+    const COL_ACCENT_DEEP = [122, 46, 16];
+    const COL_LINE = [217, 207, 194];
+    const COL_BG_ALT = [241, 235, 225];
+
+    const PAGE_W = 210;
+    const PAGE_H = 297;
+    const M_LEFT = 18;
+    const M_RIGHT = 18;
+    const CONTENT_W = PAGE_W - M_LEFT - M_RIGHT;
+
+    let y = 18;  // current vertical position
+
+    // -------- HEADER --------
+    doc.setFillColor(...COL_INK);
+    doc.rect(0, 0, PAGE_W, 38, 'F');
+
+    // Accent stripe at top
+    doc.setFillColor(...COL_ACCENT);
+    doc.rect(0, 0, PAGE_W, 2, 'F');
+
+    // Title
+    doc.setTextColor(250, 247, 242);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.text('BHE Drilling Site Recommendation', M_LEFT, 18);
+
+    // Subtitle
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(220, 210, 195);
+    const today = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    doc.text(`Generated by Vaibhav Jaiswal  ·  ${today}`, M_LEFT, 26);
+    doc.setFontSize(8);
+    doc.text('Grounded in MSc thesis research, KIT 2026  ·  vaibhavj97-bhe.vercel.app', M_LEFT, 32);
+
+    y = 50;
+
+    // -------- SITE SUMMARY BANNER --------
+    doc.setFillColor(...COL_BG_ALT);
+    doc.rect(M_LEFT, y, CONTENT_W, 18, 'F');
+    doc.setDrawColor(...COL_ACCENT);
+    doc.setLineWidth(1);
+    doc.line(M_LEFT, y, M_LEFT, y + 18);
+
+    doc.setTextColor(...COL_ACCENT);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.text('SITE LOCATION', M_LEFT + 4, y + 5);
+
+    doc.setTextColor(...COL_INK);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const coordsText = `${s.coordinates.lat.toFixed(4)}°N, ${s.coordinates.lng.toFixed(4)}°E`;
+    doc.text(coordsText, M_LEFT + 4, y + 11);
+
+    doc.setFontSize(8);
+    doc.setTextColor(...COL_INK_SOFT);
+    const scenarioLabel = s.scenario_used === 'ssp585' ? 'SSP 5-8.5 high emissions' : 'SSP 2-4.5 moderate emissions';
+    const statLabel = s.statistic_used === 'p50' ? 'ensemble median (P50)' : 'ensemble mean';
+    doc.text(`${scenarioLabel}  ·  ${statLabel}  ·  ${s.yield_label}`, M_LEFT + 4, y + 16);
+
+    y += 24;
+
+    // -------- KEY NUMBERS (3 big values) --------
+    const numBoxW = CONTENT_W / 3;
+    const numBoxH = 26;
+
+    doc.setDrawColor(...COL_LINE);
+    doc.setLineWidth(0.3);
+    for (let i = 0; i < 3; i++) {
+      doc.rect(M_LEFT + i * numBoxW, y, numBoxW, numBoxH);
+    }
+
+    const numbers = [
+      { value: `${r.depth_m} m`, label: 'RECOMMENDED DEPTH' },
+      { value: `${r.power_kW} kW`, label: 'SUSTAINABLE OUTPUT' },
+      { value: `EUR ${c.total.toLocaleString('en-US')}`, label: 'TOTAL EST. COST' },
+    ];
+
+    numbers.forEach((n, i) => {
+      const cx = M_LEFT + i * numBoxW + numBoxW / 2;
+      doc.setTextColor(...COL_ACCENT);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text(n.value, cx, y + 12, { align: 'center' });
+      doc.setTextColor(...COL_INK_FAINT);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.text(n.label, cx, y + 20, { align: 'center' });
+    });
+
+    y += numBoxH + 8;
+
+    // -------- TWO-COLUMN: MAP + SITE DETAILS --------
+    const colW = (CONTENT_W - 6) / 2;
+    const mapY = y;
+
+    // Left column: map screenshot
+    if (mapImage) {
+      const mapH = 56;
+      doc.setDrawColor(...COL_LINE);
+      doc.rect(M_LEFT, mapY, colW, mapH);
+      try {
+        doc.addImage(mapImage, 'JPEG', M_LEFT + 0.3, mapY + 0.3, colW - 0.6, mapH - 0.6);
+      } catch (e) {
+        console.warn('Failed to embed map image:', e);
+      }
+      // Caption
+      doc.setTextColor(...COL_INK_FAINT);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7);
+      doc.text(`Site location at ${s.coordinates.lat.toFixed(3)}°N, ${s.coordinates.lng.toFixed(3)}°E`, M_LEFT, mapY + mapH + 4);
+    }
+
+    // Right column: site detail key-value pairs
+    const rightX = M_LEFT + colW + 6;
+    let ry = mapY;
+    doc.setTextColor(...COL_INK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Site details', rightX, ry + 4);
+    ry += 9;
+
+    const details = [
+      ['Sustainable extraction rate', `${s.q_used} W/m`],
+      ['Yield class', s.yield_label],
+      ['Cost per kW capacity', `EUR ${c.cost_per_kW.toLocaleString('en-US')} / kW`],
+      ['Climate scenario', scenarioLabel],
+      ['Ensemble statistic', statLabel],
+    ];
+
+    details.forEach(([label, value]) => {
+      doc.setTextColor(...COL_INK_FAINT);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text(label.toUpperCase(), rightX, ry);
+      doc.setTextColor(...COL_INK);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(value, rightX, ry + 4);
+      ry += 9;
+    });
+
+    y = mapY + 62;  // skip past map
+
+    // -------- COST BREAKDOWN --------
+    if (y > 220) { doc.addPage(); y = 20; }
+
+    doc.setTextColor(...COL_INK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text('Cost breakdown', M_LEFT, y);
+    y += 6;
+
+    const costRows = [
+      [`Drilling (${r.depth_m} m at EUR ${Math.round(c.drilling / r.depth_m)}/m)`, `EUR ${c.drilling.toLocaleString('en-US')}`],
+      ['Heat pump unit', `EUR ${c.heat_pump.toLocaleString('en-US')}`],
+    ];
+    if (c.cooling_addon > 0) costRows.push(['Reversible cooling add-on', `EUR ${c.cooling_addon.toLocaleString('en-US')}`]);
+    if (c.hot_water_addon > 0) costRows.push(['Domestic hot water integration', `EUR ${c.hot_water_addon.toLocaleString('en-US')}`]);
+    costRows.push(['Permits, installation, system connection', `EUR ${c.ancillary.toLocaleString('en-US')}`]);
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    costRows.forEach(([label, value]) => {
+      doc.setTextColor(...COL_INK_SOFT);
+      doc.text(label, M_LEFT, y);
+      doc.setTextColor(...COL_INK);
+      doc.text(value, PAGE_W - M_RIGHT, y, { align: 'right' });
+      // Dashed line under
+      doc.setDrawColor(...COL_LINE);
+      doc.setLineDashPattern([0.5, 0.5], 0);
+      doc.line(M_LEFT, y + 1.5, PAGE_W - M_RIGHT, y + 1.5);
+      doc.setLineDashPattern([], 0);
+      y += 6;
+    });
+
+    // Total row
+    doc.setDrawColor(...COL_INK);
+    doc.setLineWidth(0.5);
+    doc.line(M_LEFT, y, PAGE_W - M_RIGHT, y);
+    y += 4;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(...COL_INK);
+    doc.text('Total estimated', M_LEFT, y);
+    doc.text(`EUR ${c.total.toLocaleString('en-US')}`, PAGE_W - M_RIGHT, y, { align: 'right' });
+    y += 4;
+    doc.line(M_LEFT, y, PAGE_W - M_RIGHT, y);
+    y += 8;
+
+    // Drilling range note
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COL_INK_FAINT);
+    doc.text(`Drilling cost range: EUR ${c.drilling_range[0].toLocaleString('en-US')} - ${c.drilling_range[1].toLocaleString('en-US')} (depends on local geology and contractor).`, M_LEFT, y);
+    y += 8;
+
+    // Budget banner (if any)
+    if (r.budget_status) {
+      const bs = r.budget_status;
+      const bannerColor = bs.fits ? [232, 241, 232] : [245, 232, 224];
+      const borderColor = bs.fits ? [45, 107, 58] : [165, 42, 42];
+      doc.setFillColor(...bannerColor);
+      doc.rect(M_LEFT, y, CONTENT_W, 10, 'F');
+      doc.setDrawColor(...borderColor);
+      doc.setLineWidth(0.8);
+      doc.line(M_LEFT, y, M_LEFT, y + 10);
+      doc.setTextColor(...borderColor);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(bs.fits ? 'WITHIN BUDGET' : 'OVER BUDGET', M_LEFT + 3, y + 4);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...COL_INK);
+      const budgetText = bs.fits
+        ? `Estimated cost EUR ${c.total.toLocaleString('en-US')}, your budget EUR ${bs.provided.toLocaleString('en-US')}. Headroom: EUR ${bs.delta.toLocaleString('en-US')}.`
+        : `Estimated cost EUR ${c.total.toLocaleString('en-US')} exceeds your budget of EUR ${bs.provided.toLocaleString('en-US')} by EUR ${Math.abs(bs.delta).toLocaleString('en-US')}.`;
+      doc.text(budgetText, M_LEFT + 3, y + 8);
+      y += 14;
+    }
+
+    // -------- TIME-HORIZON COMPARISON --------
+    if (horizons.length >= 2) {
+      if (y > 220) { doc.addPage(); y = 20; }
+
+      doc.setTextColor(...COL_INK);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Time-horizon comparison', M_LEFT, y);
+      y += 5;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...COL_INK_FAINT);
+      const introLines = doc.splitTextToSize(
+        `What the same ${r.depth_m} m borehole would deliver at this site under different operating strategies. The recommendation uses the 100-year sustainable value.`,
+        CONTENT_W
+      );
+      doc.text(introLines, M_LEFT, y + 4);
+      y += introLines.length * 3.5 + 4;
+
+      // Horizon cards in a row
+      const cardW = (CONTENT_W - 6) / 3;
+      const cardH = 34;
+      horizons.forEach((h, i) => {
+        const cx = M_LEFT + i * (cardW + 3);
+        const isRec = h.recommended;
+
+        if (isRec) {
+          doc.setFillColor(255, 250, 243);
+          doc.rect(cx, y, cardW, cardH, 'F');
+          doc.setDrawColor(...COL_ACCENT);
+          doc.setLineWidth(0.8);
+        } else {
+          doc.setDrawColor(...COL_LINE);
+          doc.setLineWidth(0.3);
+        }
+        doc.rect(cx, y, cardW, cardH);
+
+        // Recommended tag
+        if (isRec) {
+          doc.setFillColor(...COL_ACCENT);
+          doc.rect(cx + cardW - 28, y - 2.5, 26, 4.5, 'F');
+          doc.setTextColor(250, 247, 242);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(6);
+          doc.text('RECOMMENDED', cx + cardW - 15, y + 0.5, { align: 'center' });
+        }
+
+        // Label
+        const labelCol = isRec ? COL_ACCENT : COL_INK_FAINT;
+        doc.setTextColor(labelCol[0], labelCol[1], labelCol[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7);
+        doc.text(h.label.toUpperCase(), cx + 3, y + 6);
+
+        // Mode
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7);
+        doc.setTextColor(...COL_INK_FAINT);
+        doc.text(h.mode === 'sustainable' ? 'Sustainable mode' : 'Depleting mode', cx + 3, y + 10);
+
+        // q value
+        const qCol = isRec ? COL_ACCENT : COL_INK;
+        doc.setTextColor(qCol[0], qCol[1], qCol[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text(`${h.q}`, cx + 3, y + 18);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...COL_INK_FAINT);
+        doc.text(' W/m', cx + 14, y + 18);
+
+        // Power
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...COL_INK_SOFT);
+        doc.text(`~${h.power_kW} kW at ${r.depth_m} m`, cx + 3, y + 23);
+
+        // Note
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...COL_INK_SOFT);
+        const noteLines = doc.splitTextToSize(h.note, cardW - 6);
+        doc.text(noteLines.slice(0, 3), cx + 3, y + 27);
+      });
+      y += cardH + 5;
+
+      // Explainer
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...COL_INK_FAINT);
+      const explainerLines = doc.splitTextToSize(
+        'Depleting mode: higher initial output, but ground temperature drops over time and the system loses effectiveness. Sustainable mode: ground temperature stays stable, system delivers the same output indefinitely. A real BHE installation should plan for the 100-year sustainable value.',
+        CONTENT_W
+      );
+      doc.text(explainerLines, M_LEFT, y);
+      y += explainerLines.length * 3 + 6;
+    }
+
+    // -------- AI INTERPRETATION --------
+    if (data.ai_explanation) {
+      if (y > 240) { doc.addPage(); y = 20; }
+
+      doc.setTextColor(...COL_INK);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('What this means for your site', M_LEFT, y);
+      y += 6;
+
+      doc.setFillColor(...COL_BG_ALT);
+      const aiText = data.ai_explanation;
+      const aiLines = doc.splitTextToSize(aiText, CONTENT_W - 8);
+      const aiHeight = aiLines.length * 4 + 10;
+
+      doc.rect(M_LEFT, y, CONTENT_W, aiHeight, 'F');
+      doc.setDrawColor(...COL_ACCENT);
+      doc.setLineWidth(1);
+      doc.line(M_LEFT, y, M_LEFT, y + aiHeight);
+
+      doc.setTextColor(...COL_ACCENT);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.text('AI INTERPRETATION', M_LEFT + 4, y + 5);
+
+      doc.setTextColor(...COL_INK_SOFT);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(aiLines, M_LEFT + 4, y + 10);
+
+      y += aiHeight + 6;
+    }
+
+    // -------- METHODOLOGY + DISCLAIMER --------
+    if (y > 250) { doc.addPage(); y = 20; }
+
+    doc.setTextColor(...COL_INK);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Methodology', M_LEFT, y);
+    y += 4.5;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COL_INK_SOFT);
+    const methodText = 'Sustainable extraction rates derive from a semi-analytical model coupling 8 CMIP6 climate model projections with finite line source (FLS) heat transport theory, using Brent\'s root-finding method to compute the maximum heat extraction rate that maintains ground temperature above -1.5 deg C over the operating horizon. Spatial resolution is 5 km, processed in Google Earth Engine and Python. Drilling cost estimates from German market literature (50-90 EUR/m typical range). Heat pump unit cost from German installation surveys (8000-15000 EUR typical).';
+    const methodLines = doc.splitTextToSize(methodText, CONTENT_W);
+    doc.text(methodLines, M_LEFT, y);
+    y += methodLines.length * 3 + 5;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...COL_INK);
+    doc.text('Disclaimer', M_LEFT, y);
+    y += 4.5;
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...COL_INK_SOFT);
+    const disclaimerText = 'This report is a first-pass feasibility estimate, not engineering advice. Real geothermal yield depends on local subsurface geology, groundwater conditions, and thermal response testing (TRT) at the actual site. Drilling and installation costs vary widely by contractor, region, and permitting complexity. For an actual project, consult a licensed geothermal contractor and complete a TRT before drilling. The author and the tool make no warranty as to fitness for any specific application.';
+    const disclaimerLines = doc.splitTextToSize(disclaimerText, CONTENT_W);
+    doc.text(disclaimerLines, M_LEFT, y);
+    y += disclaimerLines.length * 3 + 4;
+
+    // -------- FOOTER on every page --------
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(...COL_LINE);
+      doc.setLineWidth(0.3);
+      doc.line(M_LEFT, PAGE_H - 14, PAGE_W - M_RIGHT, PAGE_H - 14);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...COL_INK_FAINT);
+      doc.text('Vaibhav Jaiswal  ·  MSc Applied Geosciences, KIT  ·  vaibhavj97.vercel.app', M_LEFT, PAGE_H - 9);
+      doc.text(`Page ${i} of ${pageCount}`, PAGE_W - M_RIGHT, PAGE_H - 9, { align: 'right' });
+    }
+  }
+
+
   Promise.all([loadGermanyBoundary(), refreshOverlay()]).then(() => {
     if (germanyLayer) germanyLayer.bringToFront();
     if (currentMarker) currentMarker.bringToFront();
