@@ -220,7 +220,7 @@ Interpret the numbers, do not just repeat them. Make sure your last sentence is 
             body: JSON.stringify({
               system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.4, maxOutputTokens: 1200 },
+              generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
               safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
@@ -234,6 +234,18 @@ Interpret the numbers, do not just repeat them. Make sure your last sentence is 
         if (geminiResponse.ok) {
           const data = await geminiResponse.json();
           aiExplanation = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+          const finishReason = data?.candidates?.[0]?.finishReason;
+          if (finishReason && finishReason !== 'STOP') {
+            console.warn('Gemini finishReason:', finishReason);
+            // If response was truncated, append a graceful note so the text reads as complete
+            if (aiExplanation && !aiExplanation.trim().endsWith('.') && !aiExplanation.trim().endsWith('!') && !aiExplanation.trim().endsWith('?')) {
+              // Trim the trailing incomplete part back to the last full sentence
+              const lastPeriod = aiExplanation.lastIndexOf('.');
+              if (lastPeriod > 50) {
+                aiExplanation = aiExplanation.substring(0, lastPeriod + 1);
+              }
+            }
+          }
         } else {
           console.error('Gemini API non-OK:', geminiResponse.status);
         }
