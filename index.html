@@ -1588,18 +1588,19 @@ footer a { color: var(--ink-soft); }
     // -------- TWO-COLUMN: MAP + SITE DETAILS --------
     const colW = (CONTENT_W - 6) / 2;
     const mapY = y;
+    const mapH = 48;  // map image height in mm
 
     // Left column: map screenshot
     if (mapImage) {
-      const mapH = 56;
       doc.setDrawColor(...COL_LINE);
+      doc.setLineWidth(0.3);
       doc.rect(M_LEFT, mapY, colW, mapH);
       try {
         doc.addImage(mapImage, 'JPEG', M_LEFT + 0.3, mapY + 0.3, colW - 0.6, mapH - 0.6);
       } catch (e) {
         console.warn('Failed to embed map image:', e);
       }
-      // Caption
+      // Caption (below the map)
       doc.setTextColor(...COL_INK_FAINT);
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(7);
@@ -1632,10 +1633,11 @@ footer a { color: var(--ink-soft); }
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.text(value, rightX, ry + 4);
-      ry += 9;
+      ry += 8;
     });
 
-    y = mapY + 62;  // skip past map
+    // Move past map and its caption with proper spacing before next section
+    y = mapY + mapH + 14;
 
     // -------- COST BREAKDOWN --------
     if (y > 220) { doc.addPage(); y = 20; }
@@ -1673,7 +1675,7 @@ footer a { color: var(--ink-soft); }
     doc.setDrawColor(...COL_INK);
     doc.setLineWidth(0.5);
     doc.line(M_LEFT, y, PAGE_W - M_RIGHT, y);
-    y += 4;
+    y += 5;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(...COL_INK);
@@ -1681,14 +1683,14 @@ footer a { color: var(--ink-soft); }
     doc.text(`EUR ${c.total.toLocaleString('en-US')}`, PAGE_W - M_RIGHT, y, { align: 'right' });
     y += 4;
     doc.line(M_LEFT, y, PAGE_W - M_RIGHT, y);
-    y += 8;
+    y += 7;
 
     // Drilling range note
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7.5);
     doc.setTextColor(...COL_INK_FAINT);
     doc.text(`Drilling cost range: EUR ${c.drilling_range[0].toLocaleString('en-US')} - ${c.drilling_range[1].toLocaleString('en-US')} (depends on local geology and contractor).`, M_LEFT, y);
-    y += 8;
+    y += 10;
 
     // Budget banner (if any)
     if (r.budget_status) {
@@ -1736,7 +1738,7 @@ footer a { color: var(--ink-soft); }
 
       // Horizon cards in a row
       const cardW = (CONTENT_W - 6) / 3;
-      const cardH = 34;
+      const cardH = 38;
       horizons.forEach((h, i) => {
         const cx = M_LEFT + i * (cardW + 3);
         const isRec = h.recommended;
@@ -1797,9 +1799,9 @@ footer a { color: var(--ink-soft); }
         doc.setFontSize(6.5);
         doc.setTextColor(...COL_INK_SOFT);
         const noteLines = doc.splitTextToSize(h.note, cardW - 6);
-        doc.text(noteLines.slice(0, 3), cx + 3, y + 27);
+        doc.text(noteLines.slice(0, 4), cx + 3, y + 28);
       });
-      y += cardH + 5;
+      y += cardH + 7;
 
       // Explainer
       doc.setFont('helvetica', 'normal');
@@ -1810,23 +1812,23 @@ footer a { color: var(--ink-soft); }
         CONTENT_W
       );
       doc.text(explainerLines, M_LEFT, y);
-      y += explainerLines.length * 3 + 6;
+      y += explainerLines.length * 3 + 10;
     }
 
     // -------- AI INTERPRETATION --------
     if (data.ai_explanation) {
-      if (y > 240) { doc.addPage(); y = 20; }
+      if (y > 230) { doc.addPage(); y = 20; }
 
       doc.setTextColor(...COL_INK);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(11);
       doc.text('What this means for your site', M_LEFT, y);
-      y += 6;
+      y += 7;
 
       doc.setFillColor(...COL_BG_ALT);
       const aiText = data.ai_explanation;
       const aiLines = doc.splitTextToSize(aiText, CONTENT_W - 8);
-      const aiHeight = aiLines.length * 4 + 10;
+      const aiHeight = aiLines.length * 4.2 + 12;
 
       doc.rect(M_LEFT, y, CONTENT_W, aiHeight, 'F');
       doc.setDrawColor(...COL_ACCENT);
@@ -1841,19 +1843,19 @@ footer a { color: var(--ink-soft); }
       doc.setTextColor(...COL_INK_SOFT);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      doc.text(aiLines, M_LEFT + 4, y + 10);
+      doc.text(aiLines, M_LEFT + 4, y + 11);
 
-      y += aiHeight + 6;
+      y += aiHeight + 10;
     }
 
     // -------- METHODOLOGY + DISCLAIMER --------
-    if (y > 250) { doc.addPage(); y = 20; }
+    if (y > 240) { doc.addPage(); y = 20; }
 
     doc.setTextColor(...COL_INK);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.text('Methodology', M_LEFT, y);
-    y += 4.5;
+    y += 5;
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
@@ -1861,13 +1863,13 @@ footer a { color: var(--ink-soft); }
     const methodText = 'Sustainable extraction rates derive from a semi-analytical model coupling 8 CMIP6 climate model projections with finite line source (FLS) heat transport theory, using Brent\'s root-finding method to compute the maximum heat extraction rate that maintains ground temperature above -1.5 deg C over the operating horizon. Spatial resolution is 5 km, processed in Google Earth Engine and Python. Drilling cost estimates from German market literature (50-90 EUR/m typical range). Heat pump unit cost from German installation surveys (8000-15000 EUR typical).';
     const methodLines = doc.splitTextToSize(methodText, CONTENT_W);
     doc.text(methodLines, M_LEFT, y);
-    y += methodLines.length * 3 + 5;
+    y += methodLines.length * 3.3 + 7;
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(...COL_INK);
     doc.text('Disclaimer', M_LEFT, y);
-    y += 4.5;
+    y += 5;
 
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(7.5);
@@ -1875,7 +1877,7 @@ footer a { color: var(--ink-soft); }
     const disclaimerText = 'This report is a first-pass feasibility estimate, not engineering advice. Real geothermal yield depends on local subsurface geology, groundwater conditions, and thermal response testing (TRT) at the actual site. Drilling and installation costs vary widely by contractor, region, and permitting complexity. For an actual project, consult a licensed geothermal contractor and complete a TRT before drilling. The author and the tool make no warranty as to fitness for any specific application.';
     const disclaimerLines = doc.splitTextToSize(disclaimerText, CONTENT_W);
     doc.text(disclaimerLines, M_LEFT, y);
-    y += disclaimerLines.length * 3 + 4;
+    y += disclaimerLines.length * 3.3 + 4;
 
     // -------- FOOTER on every page --------
     const pageCount = doc.internal.getNumberOfPages();
