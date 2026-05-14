@@ -1,0 +1,232 @@
+// BHE Recommender - Stage B
+// API now accepts a q_lookup value (from map click) and location coordinates
+// instead of a region key. Falls back to region-based lookup for backward compat.
+
+const THESIS_CONTEXT = `
+You are an AI assistant explaining results from a Borehole Heat Exchanger (BHE)
+drilling site recommendation tool. The tool is built by Vaibhav Jaiswal, based on
+his Master's thesis at KIT on climate change impact on shallow geothermal potential
+in Germany.
+
+# Background from the thesis
+
+- 8 CMIP6 climate models analyzed, two scenarios (SSP 2-4.5 moderate, SSP 5-8.5 high).
+- Three time horizons: 50 years (depleting), 100 years (depleting), 100 years sustainable.
+- By 2100, subsurface warming is +1.7 deg C (SSP 2-4.5) to +3.1 deg C (SSP 5-8.5).
+- Mean sustainable extraction: 46.05 W/m (SSP 2-4.5) -> 47.39 W/m (SSP 5-8.5).
+- Mean power per 150m BHE: 5503 W (SSP 2-4.5) -> 5603 W (SSP 5-8.5) under sustainable operation.
+- High-yield regions: southwestern Germany, Berlin, Munich, Frankfurt, Rhine-Ruhr.
+- Low-yield regions: northern and eastern Germany.
+- Drilling equivalent rule: each 1 deg C of additional warming reduces required depth by roughly 4 m.
+
+# Style rules
+
+1. Keep your explanation to 3-5 short sentences. Be specific and cite numbers.
+2. Use simple English. No jargon unless necessary.
+3. Never use em dashes. Use commas or short sentences.
+4. Never use emojis.
+5. Always reference how the climate context affects this specific recommendation.
+6. Mention one practical consideration (e.g. local geology, groundwater, regulations, urban siting).
+7. Do not invent costs or technical numbers; only explain the ones given to you.
+8. Always respond in clear, professional English.
+`;
+
+// =============================================================================
+// COST CONSTANTS
+// =============================================================================
+
+const COST = {
+  drilling_per_m: { min: 50, max: 90, default: 70 },
+  heat_pump: { min: 8000, max: 15000, default: 11000 },
+  ancillary: 2500,
+};
+
+// =============================================================================
+// YIELD CLASSIFICATION (based on W/m value)
+// =============================================================================
+
+function classifyYield(q) {
+  if (q >= 47) return { class: 'high', label: 'high yield', note: 'This site sits in the upper range of geothermal potential in Germany.' };
+  if (q >= 44) return { class: 'medium', label: 'medium yield', note: 'This site has a moderate but viable geothermal yield.' };
+  return { class: 'low', label: 'low yield', note: 'This site is at the lower end of yield, but BHE installation can still be effective with proper sizing.' };
+}
+
+// =============================================================================
+// CALCULATION LOGIC
+// =============================================================================
+
+function calculateDepth(demand_kW, q_per_m) {
+  const demand_W = demand_kW * 1000;
+  const raw_depth = demand_W / q_per_m;
+  return Math.ceil(raw_depth / 10) * 10;
+}
+
+function calculatePower(depth_m, q_per_m) {
+  return Math.round((depth_m * q_per_m) / 100) / 10;
+}
+
+function calculateCost(depth_m, useCases) {
+  const drilling = depth_m * COST.drilling_per_m.default;
+  const drilling_min = depth_m * COST.drilling_per_m.min;
+  const drilling_max = depth_m * COST.drilling_per_m.max;
+  const heat_pump = COST.heat_pump.default;
+
+  const cooling_addon = useCases.cooling ? 1500 : 0;
+  const hot_water_addon = useCases.hotWater ? 800 : 0;
+
+  const total = drilling + heat_pump + cooling_addon + hot_water_addon + COST.ancillary;
+
+  return {
+    drilling: Math.round(drilling),
+    drilling_range: [Math.round(drilling_min), Math.round(drilling_max)],
+    heat_pump: heat_pump,
+    cooling_addon: cooling_addon,
+    hot_water_addon: hot_water_addon,
+    ancillary: COST.ancillary,
+    total: Math.round(total),
+    cost_per_kW: 0
+  };
+}
+
+// =============================================================================
+// REQUEST HANDLER
+// =============================================================================
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  try {
+    const {
+      q_lookup,           // W/m, looked up from map click on frontend
+      location,           // { lat, lng, label?: string }
+      demand_kW,
+      budget_eur,
+      useCases = {},
+      scenario = 'ssp585',
+      statistic = 'mean',
+    } = req.body;
+
+    // Validation
+    if (!q_lookup || q_lookup < 20 || q_lookup > 80) {
+      return res.status(400).json({ error: 'Invalid or missing q_lookup value. Click somewhere within Germany on the map.' });
+    }
+    if (!demand_kW || demand_kW < 1 || demand_kW > 100) {
+      return res.status(400).json({ error: 'Heating demand must be between 1 and 100 kW' });
+    }
+    if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+      return res.status(400).json({ error: 'Missing location coordinates' });
+    }
+
+    // Calculations
+    const q_used = q_lookup;
+    const yieldInfo = classifyYield(q_used);
+    const depth = calculateDepth(demand_kW, q_used);
+    const power_actual_kW = calculatePower(depth, q_used);
+    const cost = calculateCost(depth, useCases);
+    cost.cost_per_kW = Math.round(cost.total / power_actual_kW);
+
+    const budgetStatus = budget_eur ? {
+      provided: budget_eur,
+      fits: cost.total <= budget_eur,
+      delta: budget_eur - cost.total
+    } : null;
+
+    // Compose summary for the AI
+    const scenarioLabel = scenario === 'ssp585' ? 'SSP 5-8.5 (high emissions)' : 'SSP 2-4.5 (moderate emissions)';
+    const statisticLabel = statistic === 'p50' ? 'ensemble median' : 'ensemble mean';
+    const locationLabel = location.label || `${location.lat.toFixed(3)}°N, ${location.lng.toFixed(3)}°E`;
+
+    const calcSummary = `
+Location: ${locationLabel}
+Latitude: ${location.lat.toFixed(3)}, Longitude: ${location.lng.toFixed(3)}
+Sustainable extraction rate at this site: ${q_used.toFixed(2)} W/m (looked up from thesis data, ${statisticLabel})
+Climate scenario: ${scenarioLabel}
+Yield class at this location: ${yieldInfo.label}
+User heating demand: ${demand_kW} kW
+Use cases: heating${useCases.cooling ? ' + cooling' : ''}${useCases.hotWater ? ' + hot water' : ''}
+Recommended borehole depth: ${depth} m
+Expected sustainable thermal output at this depth: ${power_actual_kW} kW
+Estimated total cost: EUR ${cost.total.toLocaleString('en-US')}
+Cost per kW capacity: EUR ${cost.cost_per_kW.toLocaleString('en-US')} / kW
+${budgetStatus ? `User budget: EUR ${budget_eur.toLocaleString('en-US')}, fits within budget: ${budgetStatus.fits ? 'yes' : 'no (over by EUR ' + Math.abs(budgetStatus.delta).toLocaleString('en-US') + ')'}` : 'No budget specified'}
+`;
+
+    // AI explanation
+    let aiExplanation = null;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (apiKey) {
+      try {
+        const prompt = `A user clicked on a specific location in Germany on a map and got this BHE drilling recommendation:
+
+${calcSummary}
+
+Please write a 3-5 sentence personalized recommendation that:
+- Comments on whether this specific location is favorable for BHE (based on the yield value relative to German averages of 43-50 W/m)
+- Mentions how climate change affects this recommendation by 2100
+- Notes one practical consideration (geology, groundwater, regulations, distance to neighbors, urban density)
+- Briefly addresses cost reasonableness
+
+Interpret the numbers, do not just repeat them.`;
+
+        const geminiResponse = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
+              safetySettings: [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+              ],
+            }),
+          }
+        );
+
+        if (geminiResponse.ok) {
+          const data = await geminiResponse.json();
+          aiExplanation = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+        } else {
+          console.error('Gemini API non-OK:', geminiResponse.status);
+        }
+      } catch (err) {
+        console.error('Gemini call failed:', err);
+      }
+    }
+
+    return res.status(200).json({
+      input: { q_lookup, location, demand_kW, budget_eur, useCases, scenario, statistic },
+      site: {
+        location: locationLabel,
+        coordinates: { lat: location.lat, lng: location.lng },
+        q_used: Math.round(q_used * 100) / 100,
+        yield_class: yieldInfo.class,
+        yield_label: yieldInfo.label,
+        yield_note: yieldInfo.note,
+        statistic_used: statistic,
+        scenario_used: scenario
+      },
+      recommendation: {
+        depth_m: depth,
+        power_kW: power_actual_kW,
+        cost: cost,
+        budget_status: budgetStatus
+      },
+      ai_explanation: aiExplanation || 'AI explanation unavailable. The calculation above is based on data from the underlying thesis. For best results, also consider local geology and groundwater conditions.'
+    });
+
+  } catch (err) {
+    console.error('Handler error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
