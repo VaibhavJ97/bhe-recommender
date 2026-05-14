@@ -1,270 +1,1367 @@
-// BHE Recommender - Stage B
-// API now accepts a q_lookup value (from map click) and location coordinates
-// instead of a region key. Falls back to region-based lookup for backward compat.
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BHE Recommender - Click anywhere on Germany</title>
+<meta name="description" content="Click a site on the map of Germany to get a borehole depth, sustainable output, and cost estimate for a shallow ground-source heat pump. Grounded in Vaibhav Jaiswal's Master's thesis at KIT." />
 
-const THESIS_CONTEXT = `
-You are an AI assistant explaining results from a Borehole Heat Exchanger (BHE)
-drilling site recommendation tool. The tool is built by Vaibhav Jaiswal, based on
-his Master's thesis at KIT on climate change impact on shallow geothermal potential
-in Germany.
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,800;1,9..144,400&family=JetBrains+Mono:wght@400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-# Background from the thesis
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-- 8 CMIP6 climate models analyzed, two scenarios (SSP 2-4.5 moderate, SSP 5-8.5 high).
-- Three time horizons: 50 years (depleting), 100 years (depleting), 100 years sustainable.
-- By 2100, subsurface warming is +1.7 deg C (SSP 2-4.5) to +3.1 deg C (SSP 5-8.5).
-- Mean sustainable extraction: 46.05 W/m (SSP 2-4.5) -> 47.39 W/m (SSP 5-8.5).
-- Mean power per 150m BHE: 5503 W (SSP 2-4.5) -> 5603 W (SSP 5-8.5) under sustainable operation.
-- High-yield regions: southwestern Germany, Berlin, Munich, Frankfurt, Rhine-Ruhr.
-- Low-yield regions: northern and eastern Germany.
-- Drilling equivalent rule: each 1 deg C of additional warming reduces required depth by roughly 4 m.
-
-# Style rules
-
-1. Keep your explanation to 3-5 short sentences. Be specific and cite numbers.
-2. Use simple English. No jargon unless necessary.
-3. Never use em dashes. Use commas or short sentences.
-4. Never use emojis.
-5. Always reference how the climate context affects this specific recommendation.
-6. Mention one practical consideration (e.g. local geology, groundwater, regulations, urban siting).
-7. Do not invent costs or technical numbers; only explain the ones given to you.
-8. Always respond in clear, professional English.
-`;
-
-// =============================================================================
-// COST CONSTANTS
-// =============================================================================
-
-const COST = {
-  drilling_per_m: { min: 50, max: 90, default: 70 },
-  heat_pump: { min: 8000, max: 15000, default: 11000 },
-  ancillary: 2500,
-};
-
-// =============================================================================
-// YIELD CLASSIFICATION (based on W/m value)
-// =============================================================================
-
-function classifyYield(q) {
-  if (q >= 47) return { class: 'high', label: 'high yield', note: 'This site sits in the upper range of geothermal potential in Germany.' };
-  if (q >= 44) return { class: 'medium', label: 'medium yield', note: 'This site has a moderate but viable geothermal yield.' };
-  return { class: 'low', label: 'low yield', note: 'This site is at the lower end of yield, but BHE installation can still be effective with proper sizing.' };
+<style>
+:root {
+  --bg: #faf7f2;
+  --bg-alt: #f1ebe1;
+  --paper: #fffaf3;
+  --ink: #1a1612;
+  --ink-soft: #3d3528;
+  --ink-faint: #7a6e5c;
+  --accent: #b8501e;
+  --accent-deep: #7a2e10;
+  --accent-soft: #e8d4cb;
+  --line: #d9cfc2;
+  --good: #2d6b3a;
+  --warn: #b56e1a;
+  --bad: #a52a2a;
 }
 
-// =============================================================================
-// CALCULATION LOGIC
-// =============================================================================
+* { box-sizing: border-box; }
 
-function calculateDepth(demand_kW, q_per_m) {
-  const demand_W = demand_kW * 1000;
-  const raw_depth = demand_W / q_per_m;
-  return Math.ceil(raw_depth / 10) * 10;
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.55;
 }
 
-function calculatePower(depth_m, q_per_m) {
-  return Math.round((depth_m * q_per_m) / 100) / 10;
+/* ============ HEADER ============ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 40px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.brand {
+  font-family: 'Fraunces', serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.brand em { font-style: italic; font-weight: 300; color: var(--accent); }
+.tagline {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+.back-link {
+  font-size: 0.85rem;
+  color: var(--ink);
+  text-decoration: none;
+  padding: 8px 16px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.back-link:hover { background: var(--ink); color: var(--bg); }
+@media (max-width: 600px) {
+  .topbar { padding: 16px 20px; }
 }
 
-function calculateCost(depth_m, useCases) {
-  const drilling = depth_m * COST.drilling_per_m.default;
-  const drilling_min = depth_m * COST.drilling_per_m.min;
-  const drilling_max = depth_m * COST.drilling_per_m.max;
-  const heat_pump = COST.heat_pump.default;
+/* ============ MAIN LAYOUT ============ */
+main {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 40px 60px;
+}
 
-  const cooling_addon = useCases.cooling ? 1500 : 0;
-  const hot_water_addon = useCases.hotWater ? 800 : 0;
+.hero {
+  text-align: center;
+  margin-bottom: 36px;
+}
+.hero .eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+.hero h1 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  font-weight: 400;
+  margin: 0 0 14px;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.hero h1 em { font-style: italic; color: var(--accent-deep); font-weight: 300; }
+.hero p {
+  max-width: 640px;
+  margin: 0 auto;
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1.6;
+}
 
-  const total = drilling + heat_pump + cooling_addon + hot_water_addon + COST.ancillary;
+.info-callout {
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  padding: 12px 16px;
+  background: var(--bg-alt);
+  border-left: 3px solid var(--ink-faint);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
 
-  return {
-    drilling: Math.round(drilling),
-    drilling_range: [Math.round(drilling_min), Math.round(drilling_max)],
-    heat_pump: heat_pump,
-    cooling_addon: cooling_addon,
-    hot_water_addon: hot_water_addon,
-    ancillary: COST.ancillary,
-    total: Math.round(total),
-    cost_per_kW: 0
+/* ============ TWO-COLUMN LAYOUT: MAP + FORM ============ */
+.workspace {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 24px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  margin-bottom: 32px;
+  overflow: hidden;
+}
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 1fr; }
+}
+
+/* ============ MAP PANEL ============ */
+.map-panel {
+  position: relative;
+  background: var(--bg-alt);
+  display: flex;
+  flex-direction: column;
+}
+.map-panel-header {
+  padding: 20px 24px 14px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.map-panel-header h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.map-panel-header .sub {
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+}
+.map-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 480px;
+}
+#map { width: 100%; height: 100%; min-height: 480px; }
+
+.map-loading {
+  position: absolute;
+  inset: 0;
+  background: rgba(250, 247, 242, 0.94);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.1em;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.map-loading.active { opacity: 1; pointer-events: all; }
+.map-loading .spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.map-legend {
+  background: rgba(255, 250, 243, 0.94);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 500;
+  border-radius: 2px;
+  max-width: 220px;
+}
+.map-legend h4 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 6px;
+}
+.map-legend .bar {
+  height: 10px;
+  margin-bottom: 4px;
+  border-radius: 2px;
+  background: linear-gradient(to right, #440154, #482878, #3e4a89, #31688e, #26828e, #1f9e89, #35b779, #6dcd59, #b4dd2c, #fde725);
+}
+.map-legend .vals {
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  color: var(--ink-soft);
+}
+
+.click-prompt {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 500;
+  background: rgba(26, 22, 18, 0.86);
+  color: var(--bg);
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.click-prompt.hidden { opacity: 0; }
+
+/* ============ FORM PANEL ============ */
+.form-panel {
+  padding: 24px 28px;
+  border-left: 1px solid var(--line);
+  background: var(--paper);
+}
+@media (max-width: 980px) {
+  .form-panel { border-left: none; border-top: 1px solid var(--line); }
+}
+
+.form-panel h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.form-panel .sub {
+  font-size: 0.85rem;
+  color: var(--ink-faint);
+  margin-bottom: 18px;
+}
+
+.site-readout {
+  background: var(--bg-alt);
+  border-left: 3px solid var(--accent);
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.site-readout.empty {
+  border-left-color: var(--ink-faint);
+  color: var(--ink-faint);
+}
+.site-readout .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 4px;
+}
+.site-readout.empty .label {
+  color: var(--ink-faint);
+}
+.site-readout .coords {
+  color: var(--ink-soft);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  margin-top: 4px;
+}
+.site-readout .yield {
+  font-family: 'Fraunces', serif;
+  font-size: 1.4rem;
+  color: var(--ink);
+  margin-top: 6px;
+}
+.site-readout .yield small {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  font-family: 'Inter', sans-serif;
+  margin-left: 6px;
+}
+
+.form-row { display: flex; flex-direction: column; margin-bottom: 14px; }
+.form-row.two { flex-direction: row; gap: 10px; }
+.form-row.two > div { flex: 1; display: flex; flex-direction: column; }
+
+label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+select, input[type="number"] {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  transition: border-color 0.15s;
+}
+select:focus, input:focus { outline: none; border-color: var(--accent); }
+select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231a1612' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+.hint {
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+  margin-top: 4px;
+}
+
+.checkbox-group {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  user-select: none;
+}
+.checkbox-item input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.form-actions {
+  margin-top: 16px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.92rem;
+  font-weight: 500;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.05s;
+  border: 1px solid transparent;
+}
+.btn-primary {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+.btn-primary:active { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.btn-ghost:hover { background: var(--ink); color: var(--bg); }
+
+/* ============ RESULT CARD ============ */
+.result-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  margin-bottom: 32px;
+  overflow: hidden;
+  animation: slideIn 0.4s ease;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result-header {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 26px 32px;
+  position: relative;
+  overflow: hidden;
+}
+.result-header::before {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; width: 50%;
+  background: radial-gradient(circle at 80% 50%, var(--accent) 0%, transparent 65%);
+  opacity: 0.2;
+  pointer-events: none;
+}
+.result-header .eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin-bottom: 8px;
+  position: relative;
+  z-index: 1;
+}
+.result-header h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  margin: 0;
+  position: relative;
+  z-index: 1;
+}
+.result-header h2 em { font-style: italic; color: var(--accent); font-weight: 300; }
+.result-header .site-tag {
+  font-size: 0.85rem;
+  color: rgba(250, 247, 242, 0.7);
+  margin-top: 6px;
+  position: relative;
+  z-index: 1;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.05em;
+}
+
+.result-headline {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+.result-headline .cell {
+  padding: 26px 22px;
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+.result-headline .cell:last-child { border-right: none; }
+.result-headline .num {
+  font-family: 'Fraunces', serif;
+  font-size: 2.2rem;
+  font-weight: 400;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.result-headline .num small { font-size: 1rem; color: var(--ink-soft); }
+.result-headline .lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+@media (max-width: 600px) {
+  .result-headline { grid-template-columns: 1fr; }
+  .result-headline .cell { border-right: none; border-bottom: 1px solid var(--line); }
+  .result-headline .cell:last-child { border-bottom: none; }
+}
+
+.result-body { padding: 26px 30px; }
+.result-body h3 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.result-body h3:not(:first-child) { margin-top: 24px; }
+
+.cost-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.cost-table td { padding: 9px 0; font-size: 0.92rem; border-bottom: 1px dashed var(--line); }
+.cost-table td:last-child { text-align: right; font-family: 'JetBrains Mono', monospace; color: var(--ink-soft); }
+.cost-table tr.total td {
+  border-bottom: none;
+  border-top: 2px solid var(--ink);
+  padding-top: 14px;
+  padding-bottom: 14px;
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ink);
+}
+.cost-range { font-size: 0.78rem; color: var(--ink-faint); margin-left: 6px; }
+
+.budget-banner {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 2px;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.budget-banner.fits { background: #e8f1e8; border-left: 4px solid var(--good); color: #1a3d22; }
+.budget-banner.over { background: #f5e8e0; border-left: 4px solid var(--bad); color: #5a1a1a; }
+
+.ai-explanation {
+  background: var(--bg-alt);
+  padding: 20px 24px;
+  margin-top: 6px;
+  border-left: 3px solid var(--accent);
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+.ai-explanation .ai-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+  display: block;
+}
+.ai-explanation p { margin: 0 0 8px; }
+.ai-explanation p:last-child { margin-bottom: 0; }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* ============ HORIZON COMPARISON ============ */
+.horizon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 6px;
+}
+.horizon-card {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 16px 16px 14px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.horizon-card.recommended {
+  background: var(--paper);
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 2px 8px rgba(184, 80, 30, 0.08);
+}
+.horizon-card .horizon-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+.horizon-card.recommended .horizon-label {
+  color: var(--accent);
+}
+.horizon-card .horizon-mode {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  font-style: italic;
+  margin-bottom: 10px;
+}
+.horizon-card.recommended .horizon-mode {
+  color: var(--accent-deep);
+}
+.horizon-card .horizon-q {
+  font-family: 'Fraunces', serif;
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: var(--ink);
+  line-height: 1;
+}
+.horizon-card .horizon-q small {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  margin-left: 4px;
+}
+.horizon-card.recommended .horizon-q {
+  color: var(--accent);
+}
+.horizon-card .horizon-power {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.horizon-card .horizon-note {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  margin-top: auto;
+}
+.horizon-card .recommended-tag {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+.horizon-explainer {
+  margin-top: 14px;
+  font-size: 0.84rem;
+  color: var(--ink-faint);
+  line-height: 1.55;
+}
+@media (max-width: 720px) {
+  .horizon-grid { grid-template-columns: 1fr; }
+}
+.detail-item {
+  background: var(--bg);
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+}
+.detail-item .lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  display: block;
+  margin-bottom: 4px;
+}
+.detail-item .val {
+  font-size: 0.92rem;
+  color: var(--ink);
+  font-weight: 500;
+}
+@media (max-width: 600px) {
+  .detail-grid { grid-template-columns: 1fr; }
+  .result-body { padding: 22px 22px; }
+}
+
+.error-banner {
+  background: #fce8e0;
+  border: 1px solid var(--bad);
+  color: #5a1a1a;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  font-size: 0.92rem;
+}
+
+/* ============ LEAFLET STYLING ============ */
+.leaflet-image-layer {
+  image-rendering: pixelated !important;
+  image-rendering: -moz-crisp-edges !important;
+  image-rendering: crisp-edges !important;
+}
+.leaflet-popup-content {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+}
+.leaflet-popup-content strong { color: var(--accent-deep); }
+
+/* ============ FOOTER ============ */
+footer {
+  text-align: center;
+  padding: 28px 20px;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+footer a { color: var(--ink-soft); }
+
+@media (max-width: 700px) {
+  main { padding: 20px 16px 40px; }
+  .form-panel { padding: 22px 20px; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div>
+    <a href="https://vaibhavj97.vercel.app" class="brand">BHE <em>Recommender</em></a>
+    <div class="tagline">Click anywhere on Germany to start</div>
+  </div>
+  <a href="https://vaibhavj97.vercel.app" class="back-link">Back to portfolio</a>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="eyebrow">→ Site-specific geothermal feasibility</div>
+    <h1>Should you drill a <em>borehole</em> here?</h1>
+    <p>Click a site on the map of Germany to read the sustainable geothermal extraction rate at that exact location, then get a depth, output and cost estimate. Powered by real thesis data, 5 km resolution.</p>
+  </section>
+
+  <div class="info-callout">
+    Results are estimates from CMIP6 ensemble averages at 5 km resolution. Local geology, groundwater, and permits will shift the real numbers. Use this as a first-pass feasibility tool, not a final design.
+  </div>
+
+  <section class="workspace">
+
+    <!-- ============ MAP PANEL ============ -->
+    <div class="map-panel">
+      <div class="map-panel-header">
+        <h2>Pick a site</h2>
+        <div class="sub">Click any point in Germany. The map shows sustainable heat extraction (W/m) under your chosen scenario and statistic.</div>
+      </div>
+      <div class="map-wrap">
+        <div id="map"></div>
+        <div class="click-prompt" id="click-prompt">Click anywhere on Germany to start</div>
+        <div class="map-loading active" id="map-loading">
+          <div class="spinner"></div>
+          <span>Loading map data...</span>
+        </div>
+        <div class="map-legend">
+          <h4>Sustainable heat extraction (W/m)</h4>
+          <div class="bar"></div>
+          <div class="vals"><span>40</span><span>45</span><span>50</span><span>55</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ FORM PANEL ============ -->
+    <div class="form-panel">
+      <h2>Configure & calculate</h2>
+      <div class="sub">Map click sets the location. Adjust the rest below.</div>
+
+      <div class="site-readout empty" id="site-readout">
+        <span class="label">Selected site</span>
+        No site selected yet. Click on the map.
+      </div>
+
+      <form id="recommend-form" autocomplete="off">
+
+        <div class="form-row two">
+          <div>
+            <label for="scenario">Scenario</label>
+            <select id="scenario">
+              <option value="ssp585" selected>SSP 5-8.5</option>
+              <option value="ssp245">SSP 2-4.5</option>
+            </select>
+          </div>
+          <div>
+            <label for="statistic">Statistic</label>
+            <select id="statistic">
+              <option value="mean" selected>Ensemble mean</option>
+              <option value="p50">Ensemble median (P50)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label for="demand">Heating demand (kW)</label>
+          <input type="number" id="demand" min="1" max="100" step="0.5" placeholder="e.g. 8" required>
+          <div class="hint">Typical insulated home: 6-10 kW. Older or larger: 12-20 kW.</div>
+        </div>
+
+        <div class="form-row">
+          <label for="budget">Budget (EUR, optional)</label>
+          <input type="number" id="budget" min="0" step="500" placeholder="e.g. 25000">
+        </div>
+
+        <div class="form-row">
+          <label>System will provide</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item">
+              <input type="checkbox" id="use-heating" checked disabled>
+              Heating (always)
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" id="use-cooling">
+              Cooling
+            </label>
+            <label class="checkbox-item">
+              <input type="checkbox" id="use-hotwater">
+              Hot water
+            </label>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="submit-btn" disabled>
+            Calculate
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+          </button>
+          <button type="button" class="btn btn-ghost" id="reset-btn">Reset</button>
+        </div>
+
+      </form>
+    </div>
+
+  </section>
+
+  <div id="result-container"></div>
+
+</main>
+
+<footer>
+  Built by <a href="https://vaibhavj97.vercel.app">Vaibhav Jaiswal</a>. Map data from MSc thesis (KIT, 2026). AI via Google Gemini.
+</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/chroma-js@2.4.2/chroma.min.js"></script>
+
+<script>
+(function () {
+  'use strict';
+
+  // ============ DATA LOOKUP CONFIG ============
+  // We use the ql_UrbanRenew_max_100yr layer (sustainable extraction over 100 years)
+  const LAYER_NAME = 'ql_UrbanRenew_max_100yr';
+
+  // 4 JSON files (2 scenarios x 2 statistics)
+  const DATA_FILES = {
+    ssp585_mean: 'data/ssp585_mean.json',
+    ssp585_p50:  'data/ssp585_p50.json',
+    ssp245_mean: 'data/ssp245_mean.json',
+    ssp245_p50:  'data/ssp245_p50.json',
   };
-}
 
-// =============================================================================
-// REQUEST HANDLER
-// =============================================================================
+  // Cached datasets after first load
+  const dataCache = {};
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Current selection
+  let currentDataset = null;
+  let currentMarker = null;
+  let currentClick = null;  // { lat, lng, q }
+  let mapOverlay = null;    // The colored raster overlay
+  let germanyLayer = null;
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  // Color scale (viridis - matches thesis page default)
+  const COLORS = ['#440154','#482878','#3e4a89','#31688e','#26828e','#1f9e89','#35b779','#6dcd59','#b4dd2c','#fde725'];
+  const Q_RANGE = { min: 40, max: 55 };
 
-  try {
-    const {
-      q_lookup,           // W/m, looked up from map click (this is the 100yr sustainable value)
-      q_all,              // {q_50_depleting, q_50_sustainable, q_100_sustainable} - all 3 horizons
-      location,           // { lat, lng, label?: string }
-      demand_kW,
-      budget_eur,
-      useCases = {},
-      scenario = 'ssp585',
-      statistic = 'mean',
-    } = req.body;
+  // ============ LEAFLET MAP ============
+  const map = L.map('map', {
+    center: [51.0, 10.4],
+    zoom: 6,
+    minZoom: 5,
+    maxZoom: 12,
+  });
 
-    // Validation
-    if (!q_lookup || q_lookup < 20 || q_lookup > 80) {
-      return res.status(400).json({ error: 'Invalid or missing q_lookup value. Click somewhere within Germany on the map.' });
-    }
-    if (!demand_kW || demand_kW < 1 || demand_kW > 100) {
-      return res.status(400).json({ error: 'Heating demand must be between 1 and 100 kW' });
-    }
-    if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
-      return res.status(400).json({ error: 'Missing location coordinates' });
-    }
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  }).addTo(map);
 
-    // Calculations
-    const q_used = q_lookup;
-    const yieldInfo = classifyYield(q_used);
-    const depth = calculateDepth(demand_kW, q_used);
-    const power_actual_kW = calculatePower(depth, q_used);
-    const cost = calculateCost(depth, useCases);
-    cost.cost_per_kW = Math.round(cost.total / power_actual_kW);
-
-    // Compute time-horizon comparison at the same recommended depth
-    const horizons = [];
-    if (q_all) {
-      if (typeof q_all.q_50_depleting === 'number' && q_all.q_50_depleting > 0) {
-        horizons.push({
-          key: '50yr_depleting',
-          label: '50-year depleting',
-          mode: 'depleting',
-          q: Math.round(q_all.q_50_depleting * 100) / 100,
-          power_kW: Math.round((depth * q_all.q_50_depleting) / 100) / 10,
-          note: 'Higher initial output, but the ground cools and the system loses effectiveness over decades.'
-        });
-      }
-      if (typeof q_all.q_50_sustainable === 'number' && q_all.q_50_sustainable > 0) {
-        horizons.push({
-          key: '50yr_sustainable',
-          label: '50-year sustainable',
-          mode: 'sustainable',
-          q: Math.round(q_all.q_50_sustainable * 100) / 100,
-          power_kW: Math.round((depth * q_all.q_50_sustainable) / 100) / 10,
-          note: 'Safe operation for 50 years with minimal ground cooling.'
-        });
-      }
-      if (typeof q_all.q_100_sustainable === 'number' && q_all.q_100_sustainable > 0) {
-        horizons.push({
-          key: '100yr_sustainable',
-          label: '100-year sustainable',
-          mode: 'sustainable',
-          q: Math.round(q_all.q_100_sustainable * 100) / 100,
-          power_kW: Math.round((depth * q_all.q_100_sustainable) / 100) / 10,
-          note: 'Fully renewable. Ground temperature stays stable forever.',
-          recommended: true
-        });
-      }
-    }
-
-    const budgetStatus = budget_eur ? {
-      provided: budget_eur,
-      fits: cost.total <= budget_eur,
-      delta: budget_eur - cost.total
-    } : null;
-
-    // Compose summary for the AI
-    const scenarioLabel = scenario === 'ssp585' ? 'SSP 5-8.5 (high emissions)' : 'SSP 2-4.5 (moderate emissions)';
-    const statisticLabel = statistic === 'p50' ? 'ensemble median' : 'ensemble mean';
-    const locationLabel = location.label || `${location.lat.toFixed(3)}°N, ${location.lng.toFixed(3)}°E`;
-
-    const calcSummary = `
-Location: ${locationLabel}
-Latitude: ${location.lat.toFixed(3)}, Longitude: ${location.lng.toFixed(3)}
-Sustainable extraction rate at this site: ${q_used.toFixed(2)} W/m (looked up from thesis data, ${statisticLabel})
-Climate scenario: ${scenarioLabel}
-Yield class at this location: ${yieldInfo.label}
-User heating demand: ${demand_kW} kW
-Use cases: heating${useCases.cooling ? ' + cooling' : ''}${useCases.hotWater ? ' + hot water' : ''}
-Recommended borehole depth: ${depth} m
-Expected sustainable thermal output at this depth: ${power_actual_kW} kW
-Estimated total cost: EUR ${cost.total.toLocaleString('en-US')}
-Cost per kW capacity: EUR ${cost.cost_per_kW.toLocaleString('en-US')} / kW
-${budgetStatus ? `User budget: EUR ${budget_eur.toLocaleString('en-US')}, fits within budget: ${budgetStatus.fits ? 'yes' : 'no (over by EUR ' + Math.abs(budgetStatus.delta).toLocaleString('en-US') + ')'}` : 'No budget specified'}
-`;
-
-    // AI explanation
-    let aiExplanation = null;
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (apiKey) {
+  // Germany boundary - try multiple sources for reliability
+  async function loadGermanyBoundary() {
+    const sources = [
+      'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
+      'https://datahub.io/core/geo-countries/r/countries.geojson',
+      'https://cdn.jsdelivr.net/gh/datasets/geo-countries@master/data/countries.geojson'
+    ];
+    for (const url of sources) {
       try {
-        const prompt = `A user clicked on a specific location in Germany on a map and got this BHE drilling recommendation:
-
-${calcSummary}
-
-Please write a 3-5 sentence personalized recommendation that:
-- Comments on whether this specific location is favorable for BHE (based on the yield value relative to German averages of 43-50 W/m)
-- Mentions how climate change affects this recommendation by 2100
-- Notes one practical consideration (geology, groundwater, regulations, distance to neighbors, urban density)
-- Briefly addresses cost reasonableness
-
-Interpret the numbers, do not just repeat them.`;
-
-        const geminiResponse = await fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.4, maxOutputTokens: 600 },
-              safetySettings: [
-                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-              ],
-            }),
-          }
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        const data = await r.json();
+        const germany = data.features.find(f =>
+          f.properties.ADMIN === 'Germany' ||
+          f.properties.NAME === 'Germany' ||
+          f.properties.name === 'Germany' ||
+          f.properties.ISO_A2 === 'DE'
         );
-
-        if (geminiResponse.ok) {
-          const data = await geminiResponse.json();
-          aiExplanation = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-        } else {
-          console.error('Gemini API non-OK:', geminiResponse.status);
+        if (germany) {
+          germanyLayer = L.geoJSON(germany, {
+            style: { color: '#1a1612', weight: 2.5, fill: false, opacity: 0.9 },
+            interactive: false,
+          }).addTo(map);
+          if (mapOverlay) germanyLayer.bringToFront();
+          if (currentMarker) currentMarker.bringToFront();
+          console.log('Germany boundary loaded from:', url);
+          return;
         }
-      } catch (err) {
-        console.error('Gemini call failed:', err);
+      } catch (e) {
+        console.warn('Boundary source failed:', url, e);
+      }
+    }
+    console.warn('All Germany boundary sources failed');
+  }
+
+  // ============ DATA LOADING ============
+  async function loadDataset(key) {
+    if (dataCache[key]) return dataCache[key];
+    const url = DATA_FILES[key];
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Failed to load ${url} (${r.status})`);
+    const data = await r.json();
+    dataCache[key] = data;
+    return data;
+  }
+
+  function getCurrentKey() {
+    const scenario = document.getElementById('scenario').value;
+    const statistic = document.getElementById('statistic').value;
+    return `${scenario}_${statistic}`;
+  }
+
+  // ============ RASTER RENDERING ============
+  function renderRaster(dataset) {
+    const arr = dataset.layers[LAYER_NAME];
+    if (!arr) {
+      console.error(`Layer ${LAYER_NAME} not in dataset`);
+      return null;
+    }
+    const rows = arr.length;
+    const cols = arr[0].length;
+    const scale = chroma.scale(COLORS).domain([Q_RANGE.min, Q_RANGE.max]);
+
+    // Small native canvas
+    const small = document.createElement('canvas');
+    small.width = cols; small.height = rows;
+    const sCtx = small.getContext('2d');
+    const imgData = sCtx.createImageData(cols, rows);
+
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const v = arr[y][x];
+        const i = (y * cols + x) * 4;
+        if (v === null || v === undefined || Number.isNaN(v) || !Number.isFinite(v)) {
+          imgData.data[i] = 0; imgData.data[i+1] = 0; imgData.data[i+2] = 0; imgData.data[i+3] = 0;
+        } else {
+          const c = scale(v).rgb();
+          imgData.data[i] = c[0]; imgData.data[i+1] = c[1]; imgData.data[i+2] = c[2]; imgData.data[i+3] = 180;
+        }
+      }
+    }
+    sCtx.putImageData(imgData, 0, 0);
+
+    // Upscale 50x without smoothing
+    const SCALE = 50;
+    const big = document.createElement('canvas');
+    big.width = cols * SCALE; big.height = rows * SCALE;
+    const bCtx = big.getContext('2d');
+    bCtx.imageSmoothingEnabled = false;
+    bCtx.drawImage(small, 0, 0, big.width, big.height);
+    return big.toDataURL();
+  }
+
+  async function refreshOverlay() {
+    showMapLoading(true);
+    try {
+      const key = getCurrentKey();
+      const dataset = await loadDataset(key);
+      currentDataset = dataset;
+
+      const url = renderRaster(dataset);
+      const e = dataset.extent;
+      const bounds = [[e.ymin, e.xmin], [e.ymax, e.xmax]];
+
+      if (mapOverlay) map.removeLayer(mapOverlay);
+      if (url) {
+        mapOverlay = L.imageOverlay(url, bounds, { opacity: 0.85 });
+        mapOverlay.addTo(map);
+      }
+      if (germanyLayer) germanyLayer.bringToFront();
+      if (currentMarker) currentMarker.bringToFront();
+
+      // If a click was previously made, refresh its q value from new dataset
+      if (currentClick) {
+        const q = lookupValue(dataset, currentClick.lat, currentClick.lng, LAYER_NAME);
+        const q50_dep = lookupValue(dataset, currentClick.lat, currentClick.lng, 'ql_Urban_50yr');
+        const q50_sus = lookupValue(dataset, currentClick.lat, currentClick.lng, 'ql_UrbanRenew_50yr');
+        if (q !== null) {
+          currentClick.q = q;
+          currentClick.q_all = {
+            q_50_depleting: q50_dep,
+            q_50_sustainable: q50_sus,
+            q_100_sustainable: q,
+          };
+          updateSiteReadout();
+        }
+      }
+    } catch (err) {
+      console.error('refreshOverlay error:', err);
+    } finally {
+      showMapLoading(false);
+    }
+  }
+
+  function showMapLoading(active) {
+    const el = document.getElementById('map-loading');
+    if (active) el.classList.add('active');
+    else el.classList.remove('active');
+  }
+
+  // ============ PIXEL LOOKUP ============
+  function lookupValue(dataset, lat, lng, layerName) {
+    const layer = layerName || LAYER_NAME;
+    const arr = dataset.layers[layer];
+    if (!arr) return null;
+    const e = dataset.extent;
+    const cols = dataset.shape.cols;
+    const rows = dataset.shape.rows;
+    const pw = (e.xmax - e.xmin) / cols;
+    const ph = (e.ymax - e.ymin) / rows;
+    const x = Math.floor((lng - e.xmin) / pw);
+    const y = Math.floor((e.ymax - lat) / ph);
+    if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
+    const v = arr[y]?.[x];
+    if (v === null || v === undefined || Number.isNaN(v) || !Number.isFinite(v)) return null;
+    return Math.round(v * 100) / 100;
+  }
+
+  // ============ MAP CLICK HANDLER ============
+  map.on('click', function (e) {
+    if (!currentDataset) return;
+    const { lat, lng } = e.latlng;
+    const q = lookupValue(currentDataset, lat, lng, LAYER_NAME);
+
+    if (q === null) {
+      // Outside data extent
+      const p = L.popup()
+        .setLatLng(e.latlng)
+        .setContent('<strong>No data here.</strong><br>Please click somewhere inside Germany where data is available.')
+        .openOn(map);
+      return;
+    }
+
+    // Also look up the other two time horizons at the same pixel
+    const q50_depleting = lookupValue(currentDataset, lat, lng, 'ql_Urban_50yr');
+    const q50_sustainable = lookupValue(currentDataset, lat, lng, 'ql_UrbanRenew_50yr');
+
+    // Place / move marker
+    if (currentMarker) {
+      currentMarker.setLatLng(e.latlng);
+    } else {
+      const icon = L.divIcon({
+        className: 'site-marker',
+        html: '<div style="width:18px;height:18px;border:3px solid #b8501e;background:#1a1612;border-radius:50%;box-shadow:0 0 0 3px rgba(184,80,30,0.3);"></div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      currentMarker = L.marker(e.latlng, { icon }).addTo(map);
+    }
+
+    currentClick = {
+      lat, lng, q,
+      q_all: {
+        q_50_depleting: q50_depleting,
+        q_50_sustainable: q50_sustainable,
+        q_100_sustainable: q,
+      }
+    };
+    updateSiteReadout();
+
+    // Hide the "click anywhere" prompt
+    document.getElementById('click-prompt').classList.add('hidden');
+
+    // Enable submit button
+    document.getElementById('submit-btn').disabled = false;
+  });
+
+  // ============ SITE READOUT ============
+  function updateSiteReadout() {
+    const readout = document.getElementById('site-readout');
+    if (!currentClick) {
+      readout.classList.add('empty');
+      readout.innerHTML = '<span class="label">Selected site</span>No site selected yet. Click on the map.';
+      return;
+    }
+    readout.classList.remove('empty');
+    const { lat, lng, q } = currentClick;
+    const yieldText = q >= 47 ? 'high yield' : q >= 44 ? 'medium yield' : 'low yield';
+    readout.innerHTML = `
+      <span class="label">Selected site (${yieldText})</span>
+      <div class="coords">${lat.toFixed(3)}°N, ${lng.toFixed(3)}°E</div>
+      <div class="yield">${q.toFixed(2)} <small>W/m sustainable</small></div>
+    `;
+  }
+
+  // ============ FORM SUBMIT ============
+  const form = document.getElementById('recommend-form');
+  const resultContainer = document.getElementById('result-container');
+  const submitBtn = document.getElementById('submit-btn');
+  const resetBtn = document.getElementById('reset-btn');
+
+  resetBtn.addEventListener('click', () => {
+    form.reset();
+    document.getElementById('scenario').value = 'ssp585';
+    document.getElementById('statistic').value = 'mean';
+    document.getElementById('use-heating').checked = true;
+    if (currentMarker) {
+      map.removeLayer(currentMarker);
+      currentMarker = null;
+    }
+    currentClick = null;
+    updateSiteReadout();
+    submitBtn.disabled = true;
+    document.getElementById('click-prompt').classList.remove('hidden');
+    resultContainer.innerHTML = '';
+    refreshOverlay();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (!currentClick) {
+      showError('Click a site on the map first.');
+      return;
+    }
+
+    const demand_kW = parseFloat(document.getElementById('demand').value);
+    const budgetRaw = document.getElementById('budget').value;
+    const budget_eur = budgetRaw ? parseFloat(budgetRaw) : null;
+    const scenario = document.getElementById('scenario').value;
+    const statistic = document.getElementById('statistic').value;
+    const useCases = {
+      cooling: document.getElementById('use-cooling').checked,
+      hotWater: document.getElementById('use-hotwater').checked,
+    };
+
+    if (!demand_kW) {
+      showError('Please enter heating demand.');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:8px;"><span class="spinner" style="width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;"></span> Calculating...</span>';
+
+    try {
+      const resp = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          q_lookup: currentClick.q,
+          q_all: currentClick.q_all,
+          location: { lat: currentClick.lat, lng: currentClick.lng },
+          demand_kW,
+          budget_eur,
+          useCases,
+          scenario,
+          statistic,
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        showError(err.error || 'Calculation failed. Please try again.');
+        return;
+      }
+
+      const data = await resp.json();
+      renderResult(data);
+    } catch (err) {
+      console.error(err);
+      showError('Network error. Please check your connection and try again.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = 'Calculate <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>';
+    }
+  });
+
+  // ============ RESULT RENDERING ============
+  function showError(msg) {
+    resultContainer.innerHTML = `<div class="error-banner">${escapeHtml(msg)}</div>`;
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+
+  function fmt(n) { return n.toLocaleString('en-US'); }
+
+  function renderHorizonComparison(r) {
+    const horizons = r.horizons || [];
+    if (horizons.length < 2) return '';  // need at least 2 to compare
+
+    const cards = horizons.map(h => `
+      <div class="horizon-card ${h.recommended ? 'recommended' : ''}">
+        ${h.recommended ? '<span class="recommended-tag">Recommended</span>' : ''}
+        <div class="horizon-label">${escapeHtml(h.label)}</div>
+        <div class="horizon-mode">${h.mode === 'sustainable' ? 'Sustainable mode' : 'Depleting mode'}</div>
+        <div class="horizon-q">${h.q}<small>W/m</small></div>
+        <div class="horizon-power">~${h.power_kW} kW at ${r.depth_m} m</div>
+        <div class="horizon-note">${escapeHtml(h.note)}</div>
+      </div>
+    `).join('');
+
+    return `
+      <h3>Time-horizon comparison</h3>
+      <p style="font-size: 0.88rem; color: var(--ink-faint); margin: 0 0 12px; line-height: 1.55;">
+        What the same <strong>${r.depth_m} m</strong> borehole would deliver at this site under different operating strategies. The recommendation above uses the 100-year sustainable value.
+      </p>
+      <div class="horizon-grid">
+        ${cards}
+      </div>
+      <div class="horizon-explainer">
+        <strong>Depleting:</strong> higher initial output but the ground cools over time and the system degrades. <strong>Sustainable:</strong> ground temperature stays stable, system delivers the same output indefinitely. The 100-year sustainable value is what a real BHE installation should plan for.
+      </div>
+    `;
+  }
+
+  function renderResult(data) {
+    const r = data.recommendation;
+    const s = data.site;
+    const c = r.cost;
+    const bs = r.budget_status;
+    const scenarioLabel = s.scenario_used === 'ssp585' ? 'SSP 5-8.5 high emissions' : 'SSP 2-4.5 moderate emissions';
+    const statLabel = s.statistic_used === 'p50' ? 'ensemble median (P50)' : 'ensemble mean';
+
+    let budgetHTML = '';
+    if (bs) {
+      if (bs.fits) {
+        budgetHTML = `<div class="budget-banner fits">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>Within budget. Estimated cost is EUR ${fmt(c.total)}, leaving roughly EUR ${fmt(bs.delta)} headroom.</span>
+        </div>`;
+      } else {
+        budgetHTML = `<div class="budget-banner over">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Over budget by approximately EUR ${fmt(Math.abs(bs.delta))}. Consider phasing the project or reducing demand.</span>
+        </div>`;
       }
     }
 
-    return res.status(200).json({
-      input: { q_lookup, location, demand_kW, budget_eur, useCases, scenario, statistic },
-      site: {
-        location: locationLabel,
-        coordinates: { lat: location.lat, lng: location.lng },
-        q_used: Math.round(q_used * 100) / 100,
-        yield_class: yieldInfo.class,
-        yield_label: yieldInfo.label,
-        yield_note: yieldInfo.note,
-        statistic_used: statistic,
-        scenario_used: scenario
-      },
-      recommendation: {
-        depth_m: depth,
-        power_kW: power_actual_kW,
-        cost: cost,
-        budget_status: budgetStatus,
-        horizons: horizons
-      },
-      ai_explanation: aiExplanation || 'AI explanation unavailable. The calculation above is based on data from the underlying thesis. For best results, also consider local geology and groundwater conditions.'
-    });
+    const html = `
+      <div class="result-card">
+        <div class="result-header">
+          <div class="eyebrow">→ Recommendation for your site</div>
+          <h2>Drill <em>${r.depth_m} m</em> for ${r.power_kW} kW sustainable</h2>
+          <div class="site-tag">${s.coordinates.lat.toFixed(3)}°N, ${s.coordinates.lng.toFixed(3)}°E · ${s.q_used} W/m · ${s.yield_label} · ${scenarioLabel} · ${statLabel}</div>
+        </div>
 
-  } catch (err) {
-    console.error('Handler error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+        <div class="result-headline">
+          <div class="cell">
+            <div class="num">${r.depth_m}<small> m</small></div>
+            <div class="lbl">Recommended depth</div>
+          </div>
+          <div class="cell">
+            <div class="num">${r.power_kW}<small> kW</small></div>
+            <div class="lbl">Sustainable output</div>
+          </div>
+          <div class="cell">
+            <div class="num">€${fmt(c.total)}</div>
+            <div class="lbl">Total estimated cost</div>
+          </div>
+        </div>
+
+        <div class="result-body">
+
+          <h3>Cost breakdown</h3>
+          <table class="cost-table">
+            <tr>
+              <td>Drilling (${r.depth_m} m at €${Math.round(c.drilling / r.depth_m)} / m)</td>
+              <td>€${fmt(c.drilling)} <span class="cost-range">(range €${fmt(c.drilling_range[0])} - €${fmt(c.drilling_range[1])})</span></td>
+            </tr>
+            <tr>
+              <td>Heat pump unit</td>
+              <td>€${fmt(c.heat_pump)}</td>
+            </tr>
+            ${c.cooling_addon > 0 ? `<tr><td>Reversible cooling add-on</td><td>€${fmt(c.cooling_addon)}</td></tr>` : ''}
+            ${c.hot_water_addon > 0 ? `<tr><td>Domestic hot water integration</td><td>€${fmt(c.hot_water_addon)}</td></tr>` : ''}
+            <tr>
+              <td>Permits, installation, system connection</td>
+              <td>€${fmt(c.ancillary)}</td>
+            </tr>
+            <tr class="total">
+              <td>Total estimated</td>
+              <td>€${fmt(c.total)}</td>
+            </tr>
+          </table>
+
+          ${budgetHTML}
+
+          <h3>Site details</h3>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <span class="lbl">Sustainable extraction rate</span>
+              <span class="val">${s.q_used} W/m</span>
+            </div>
+            <div class="detail-item">
+              <span class="lbl">Yield class</span>
+              <span class="val">${s.yield_label}</span>
+            </div>
+            <div class="detail-item">
+              <span class="lbl">Cost per kW capacity</span>
+              <span class="val">€${fmt(c.cost_per_kW)} / kW</span>
+            </div>
+            <div class="detail-item">
+              <span class="lbl">Data source</span>
+              <span class="val">${statLabel}</span>
+            </div>
+          </div>
+
+          ${renderHorizonComparison(r)}
+
+          <h3>What this means for your site</h3>
+          <div class="ai-explanation">
+            <span class="ai-label">AI interpretation</span>
+            ${escapeHtml(data.ai_explanation).split('\n\n').map(p => `<p>${p}</p>`).join('')}
+          </div>
+
+          <h3>Site note</h3>
+          <p style="font-size: 0.92rem; color: var(--ink-soft); line-height: 1.65; margin: 0;">${escapeHtml(s.yield_note)}</p>
+
+        </div>
+      </div>
+    `;
+
+    resultContainer.innerHTML = html;
+    setTimeout(() => {
+      resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
   }
-}
+
+  // ============ SCENARIO/STATISTIC CHANGE HANDLERS ============
+  document.getElementById('scenario').addEventListener('change', refreshOverlay);
+  document.getElementById('statistic').addEventListener('change', refreshOverlay);
+
+  // ============ INIT ============
+  Promise.all([loadGermanyBoundary(), refreshOverlay()]).then(() => {
+    if (germanyLayer) germanyLayer.bringToFront();
+    if (currentMarker) currentMarker.bringToFront();
+  });
+
+})();
+</script>
+
+</body>
+</html>
