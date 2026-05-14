@@ -222,7 +222,7 @@ main {
   height: 10px;
   margin-bottom: 4px;
   border-radius: 2px;
-  background: linear-gradient(to right, #ffffd9, #c7e9b4, #41b6c4, #225ea8, #081d58);
+  background: linear-gradient(to right, #440154, #482878, #3e4a89, #31688e, #26828e, #1f9e89, #35b779, #6dcd59, #b4dd2c, #fde725);
 }
 .map-legend .vals {
   display: flex;
@@ -563,6 +563,97 @@ select {
   gap: 12px;
   margin-top: 4px;
 }
+
+/* ============ HORIZON COMPARISON ============ */
+.horizon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 6px;
+}
+.horizon-card {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 16px 16px 14px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.horizon-card.recommended {
+  background: var(--paper);
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 2px 8px rgba(184, 80, 30, 0.08);
+}
+.horizon-card .horizon-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+.horizon-card.recommended .horizon-label {
+  color: var(--accent);
+}
+.horizon-card .horizon-mode {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  font-style: italic;
+  margin-bottom: 10px;
+}
+.horizon-card.recommended .horizon-mode {
+  color: var(--accent-deep);
+}
+.horizon-card .horizon-q {
+  font-family: 'Fraunces', serif;
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: var(--ink);
+  line-height: 1;
+}
+.horizon-card .horizon-q small {
+  font-size: 0.7rem;
+  color: var(--ink-faint);
+  margin-left: 4px;
+}
+.horizon-card.recommended .horizon-q {
+  color: var(--accent);
+}
+.horizon-card .horizon-power {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.horizon-card .horizon-note {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  margin-top: auto;
+}
+.horizon-card .recommended-tag {
+  position: absolute;
+  top: -8px;
+  right: 10px;
+  background: var(--accent);
+  color: var(--bg);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 2px;
+}
+.horizon-explainer {
+  margin-top: 14px;
+  font-size: 0.84rem;
+  color: var(--ink-faint);
+  line-height: 1.55;
+}
+@media (max-width: 720px) {
+  .horizon-grid { grid-template-columns: 1fr; }
+}
 .detail-item {
   background: var(--bg);
   padding: 11px 14px;
@@ -778,8 +869,8 @@ footer a { color: var(--ink-soft); }
   let mapOverlay = null;    // The colored raster overlay
   let germanyLayer = null;
 
-  // Color scale (matches thesis page YlGnBu)
-  const COLORS = ['#ffffd9','#edf8b1','#c7e9b4','#7fcdbb','#41b6c4','#1d91c0','#225ea8','#253494','#081d58'];
+  // Color scale (viridis - matches thesis page default)
+  const COLORS = ['#440154','#482878','#3e4a89','#31688e','#26828e','#1f9e89','#35b779','#6dcd59','#b4dd2c','#fde725'];
   const Q_RANGE = { min: 40, max: 55 };
 
   // ============ LEAFLET MAP ============
@@ -910,9 +1001,16 @@ footer a { color: var(--ink-soft); }
 
       // If a click was previously made, refresh its q value from new dataset
       if (currentClick) {
-        const q = lookupValue(dataset, currentClick.lat, currentClick.lng);
+        const q = lookupValue(dataset, currentClick.lat, currentClick.lng, LAYER_NAME);
+        const q50_dep = lookupValue(dataset, currentClick.lat, currentClick.lng, 'ql_Urban_50yr');
+        const q50_sus = lookupValue(dataset, currentClick.lat, currentClick.lng, 'ql_UrbanRenew_50yr');
         if (q !== null) {
           currentClick.q = q;
+          currentClick.q_all = {
+            q_50_depleting: q50_dep,
+            q_50_sustainable: q50_sus,
+            q_100_sustainable: q,
+          };
           updateSiteReadout();
         }
       }
@@ -930,8 +1028,9 @@ footer a { color: var(--ink-soft); }
   }
 
   // ============ PIXEL LOOKUP ============
-  function lookupValue(dataset, lat, lng) {
-    const arr = dataset.layers[LAYER_NAME];
+  function lookupValue(dataset, lat, lng, layerName) {
+    const layer = layerName || LAYER_NAME;
+    const arr = dataset.layers[layer];
     if (!arr) return null;
     const e = dataset.extent;
     const cols = dataset.shape.cols;
@@ -950,7 +1049,7 @@ footer a { color: var(--ink-soft); }
   map.on('click', function (e) {
     if (!currentDataset) return;
     const { lat, lng } = e.latlng;
-    const q = lookupValue(currentDataset, lat, lng);
+    const q = lookupValue(currentDataset, lat, lng, LAYER_NAME);
 
     if (q === null) {
       // Outside data extent
@@ -960,6 +1059,10 @@ footer a { color: var(--ink-soft); }
         .openOn(map);
       return;
     }
+
+    // Also look up the other two time horizons at the same pixel
+    const q50_depleting = lookupValue(currentDataset, lat, lng, 'ql_Urban_50yr');
+    const q50_sustainable = lookupValue(currentDataset, lat, lng, 'ql_UrbanRenew_50yr');
 
     // Place / move marker
     if (currentMarker) {
@@ -974,7 +1077,14 @@ footer a { color: var(--ink-soft); }
       currentMarker = L.marker(e.latlng, { icon }).addTo(map);
     }
 
-    currentClick = { lat, lng, q };
+    currentClick = {
+      lat, lng, q,
+      q_all: {
+        q_50_depleting: q50_depleting,
+        q_50_sustainable: q50_sustainable,
+        q_100_sustainable: q,
+      }
+    };
     updateSiteReadout();
 
     // Hide the "click anywhere" prompt
@@ -1058,6 +1168,7 @@ footer a { color: var(--ink-soft); }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           q_lookup: currentClick.q,
+          q_all: currentClick.q_all,
           location: { lat: currentClick.lat, lng: currentClick.lng },
           demand_kW,
           budget_eur,
@@ -1096,6 +1207,35 @@ footer a { color: var(--ink-soft); }
   }
 
   function fmt(n) { return n.toLocaleString('en-US'); }
+
+  function renderHorizonComparison(r) {
+    const horizons = r.horizons || [];
+    if (horizons.length < 2) return '';  // need at least 2 to compare
+
+    const cards = horizons.map(h => `
+      <div class="horizon-card ${h.recommended ? 'recommended' : ''}">
+        ${h.recommended ? '<span class="recommended-tag">Recommended</span>' : ''}
+        <div class="horizon-label">${escapeHtml(h.label)}</div>
+        <div class="horizon-mode">${h.mode === 'sustainable' ? 'Sustainable mode' : 'Depleting mode'}</div>
+        <div class="horizon-q">${h.q}<small>W/m</small></div>
+        <div class="horizon-power">~${h.power_kW} kW at ${r.depth_m} m</div>
+        <div class="horizon-note">${escapeHtml(h.note)}</div>
+      </div>
+    `).join('');
+
+    return `
+      <h3>Time-horizon comparison</h3>
+      <p style="font-size: 0.88rem; color: var(--ink-faint); margin: 0 0 12px; line-height: 1.55;">
+        What the same <strong>${r.depth_m} m</strong> borehole would deliver at this site under different operating strategies. The recommendation above uses the 100-year sustainable value.
+      </p>
+      <div class="horizon-grid">
+        ${cards}
+      </div>
+      <div class="horizon-explainer">
+        <strong>Depleting:</strong> higher initial output but the ground cools over time and the system degrades. <strong>Sustainable:</strong> ground temperature stays stable, system delivers the same output indefinitely. The 100-year sustainable value is what a real BHE installation should plan for.
+      </div>
+    `;
+  }
 
   function renderResult(data) {
     const r = data.recommendation;
@@ -1188,6 +1328,8 @@ footer a { color: var(--ink-soft); }
               <span class="val">${statLabel}</span>
             </div>
           </div>
+
+          ${renderHorizonComparison(r)}
 
           <h3>What this means for your site</h3>
           <div class="ai-explanation">
