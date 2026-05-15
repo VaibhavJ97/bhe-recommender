@@ -1517,9 +1517,14 @@ footer a { color: var(--ink-soft); }
       L.marker([currentClick.lat, currentClick.lng], { icon }).addTo(tempMap);
 
       // IMPORTANT: invalidateSize to make Leaflet recognize the 600x600 div dimensions
-      // THEN setView so it centers correctly. Order matters.
       tempMap.invalidateSize();
-      tempMap.setView([currentClick.lat, currentClick.lng], 6, { animate: false });
+      // Fit the map to Germany's bounding box so we always see all of Germany
+      // with the marker positioned correctly within it
+      const germanyBounds = L.latLngBounds(
+        [47.27, 5.87],   // SW corner
+        [55.10, 15.05]   // NE corner
+      );
+      tempMap.fitBounds(germanyBounds, { padding: [10, 10], animate: false });
 
       // Wait for tiles to load at the new view
       await new Promise(resolve => setTimeout(resolve, 1000));
