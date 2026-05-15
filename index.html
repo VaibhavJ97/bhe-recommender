@@ -1462,72 +1462,94 @@ footer a { color: var(--ink-soft); }
   }
 
   async function captureMapImage() {
-    // Capture the current Leaflet map as a PNG using html2canvas
-    const mapEl = document.getElementById('map');
-    if (!mapEl) return null;
+    // Create a hidden offscreen map element with a square aspect ratio,
+    // center it on the user's clicked site, render the same data overlay
+    // and Germany boundary, then capture it. Destroy after. This is cleaner
+    // than fighting the live map's wide aspect ratio.
+    if (!currentClick) return null;
 
-    // Save current map view so we can restore it after the screenshot
-    const savedCenter = map.getCenter();
-    const savedZoom = map.getZoom();
-
-    // Temporarily fit the map to Germany bounds (with a tight padding) so the screenshot
-    // shows just Germany and the click site, not neighboring countries
-    const germanyBounds = L.latLngBounds(
-      [47.27, 5.87],   // SW corner
-      [55.10, 15.05]   // NE corner
-    );
-    map.fitBounds(germanyBounds, { padding: [10, 10], animate: false });
-
-    // Give the tiles a moment to render at the new zoom level
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const hiddenDiv = document.createElement('div');
+    hiddenDiv.style.position = 'absolute';
+    hiddenDiv.style.left = '-10000px';
+    hiddenDiv.style.top = '0';
+    hiddenDiv.style.width = '600px';
+    hiddenDiv.style.height = '600px';
+    hiddenDiv.style.background = '#f1ebe1';
+    document.body.appendChild(hiddenDiv);
 
     let result = null;
+    let tempMap = null;
     try {
-      const fullCanvas = await html2canvas(mapEl, {
+      tempMap = L.map(hiddenDiv, {
+        center: [currentClick.lat, currentClick.lng],
+        zoom: 6,
+        zoomControl: false,
+        attributionControl: false,
+        fadeAnimation: false,
+        zoomAnimation: false,
+        markerZoomAnimation: false,
+      });
+
+      // Same basemap
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 19,
+      }).addTo(tempMap);
+
+      // Add Germany boundary if loaded
+      if (germanyLayer) {
+        const germanyData = germanyLayer.toGeoJSON();
+        L.geoJSON(germanyData, {
+          style: { color: '#1a1612', weight: 2, fill: false, opacity: 0.9 },
+          interactive: false,
+        }).addTo(tempMap);
+      }
+
+      // Add the data overlay if currentDataset is loaded
+      if (currentDataset) {
+        const arr = currentDataset.layers[LAYER_NAME];
+        if (arr) {
+          const dataUrl = renderRaster(currentDataset);
+          if (dataUrl) {
+            const e = currentDataset.extent;
+            const bounds = [[e.ymin, e.xmin], [e.ymax, e.xmax]];
+            L.imageOverlay(dataUrl, bounds, { opacity: 0.85 }).addTo(tempMap);
+          }
+        }
+      }
+
+      // Add the click marker
+      const icon = L.divIcon({
+        className: 'site-marker',
+        html: '<div style="width:18px;height:18px;border:3px solid #b8501e;background:#1a1612;border-radius:50%;box-shadow:0 0 0 3px rgba(184,80,30,0.3);"></div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+      });
+      L.marker([currentClick.lat, currentClick.lng], { icon }).addTo(tempMap);
+
+      // Wait for tiles to load
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      const canvas = await html2canvas(hiddenDiv, {
         useCORS: true,
         allowTaint: true,
         logging: false,
-        scale: 1.5,
+        scale: 1.2,
         backgroundColor: '#f1ebe1',
       });
 
-      // Crop to a near-square focused on Germany. The full captured image is wide because
-      // Leaflet fits Germany into a wide container, so we crop the outer parts away.
-      // Target aspect ~1:1 (Germany itself is close to square in shape).
-      const fullW = fullCanvas.width;
-      const fullH = fullCanvas.height;
-      const targetAspect = 1.0;  // square
-      let cropW, cropH;
-      if (fullW / fullH > targetAspect) {
-        // Source wider than target -> crop sides
-        cropH = fullH;
-        cropW = Math.round(cropH * targetAspect);
-      } else {
-        // Source taller than target -> crop top/bottom
-        cropW = fullW;
-        cropH = Math.round(cropW / targetAspect);
-      }
-      const cropX = Math.round((fullW - cropW) / 2);
-      const cropY = Math.round((fullH - cropH) / 2);
-
-      const cropCanvas = document.createElement('canvas');
-      cropCanvas.width = cropW;
-      cropCanvas.height = cropH;
-      const ctx = cropCanvas.getContext('2d');
-      ctx.drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
       result = {
-        dataUrl: cropCanvas.toDataURL('image/jpeg', 0.85),
-        width: cropW,
-        height: cropH,
-        aspect: cropW / cropH,
+        dataUrl: canvas.toDataURL('image/jpeg', 0.85),
+        width: canvas.width,
+        height: canvas.height,
+        aspect: canvas.width / canvas.height,
       };
     } catch (err) {
       console.warn('Map capture failed:', err);
+    } finally {
+      if (tempMap) tempMap.remove();
+      document.body.removeChild(hiddenDiv);
     }
-
-    // Restore the original view so the user keeps their context
-    map.setView(savedCenter, savedZoom, { animate: false });
 
     return result;
   }
