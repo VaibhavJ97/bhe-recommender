@@ -97,6 +97,128 @@ html, body {
   .portfolio-nav { gap: 18px; font-size: 0.82rem; }
 }
 
+/* ============ EXPLAINER SECTIONS (About / How it works / Tech) ============ */
+.explainer-wrap {
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.explainer-section {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 70px 40px;
+}
+.explainer-section + .explainer-section {
+  border-top: 1px solid var(--line);
+}
+.explainer-section .sec-header {
+  max-width: 720px;
+  margin: 0 auto 36px;
+  text-align: center;
+}
+.explainer-section .sec-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+.explainer-section h2 {
+  font-family: 'Fraunces', serif;
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 400;
+  margin: 0 0 14px;
+  line-height: 1.15;
+}
+.explainer-section h2 em {
+  font-style: italic;
+  color: var(--accent-deep);
+  font-weight: 300;
+}
+.explainer-section .lead {
+  color: var(--ink-soft);
+  font-size: 1rem;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  margin-top: 12px;
+}
+.how-step {
+  padding: 28px 24px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+.how-step .step-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--accent);
+  letter-spacing: 0.2em;
+  margin-bottom: 12px;
+}
+.how-step h4 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+.how-step p {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .how-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .how-grid { grid-template-columns: 1fr; }
+}
+
+.tech-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+.tech-block {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 22px 22px;
+}
+.tech-block .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: block;
+}
+.tech-block p {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .tech-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 520px) {
+  .tech-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .explainer-section { padding: 50px 20px; }
+}
+
 /* ============ FOOTER (3-column unified style) ============ */
 footer {
   background: var(--ink);
@@ -952,6 +1074,75 @@ select {
   <div id="result-container"></div>
 
 </main>
+
+<!-- ============ EXPLAINER SECTIONS ============ -->
+<div class="explainer-wrap">
+
+  <section class="explainer-section">
+    <div class="sec-header">
+      <div class="sec-eyebrow">§ About this project</div>
+      <h2>What is the <em>BHE Recommender</em>?</h2>
+      <p class="lead">An interactive feasibility tool for shallow geothermal heat pumps in Germany. Click anywhere on the map to see the sustainable heat-extraction rate at that exact location, then get a recommended borehole depth, expected sustainable output, full cost breakdown, and a downloadable PDF report. All values are grounded in my Master's thesis at KIT - 5 km resolution data from 8 CMIP6 climate models under two emission scenarios.</p>
+    </div>
+  </section>
+
+  <section class="explainer-section">
+    <div class="sec-header">
+      <div class="sec-eyebrow">§ How it works</div>
+      <h2>From a map click to a <em>complete report</em>.</h2>
+      <p class="lead">Four steps from picking a site to downloading a multi-page PDF for any location in Germany.</p>
+    </div>
+    <div class="how-grid">
+      <div class="how-step">
+        <div class="step-num">→ 01 / PICK</div>
+        <h4>Click a site</h4>
+        <p>Click anywhere on the map. The tool reads the sustainable heat-extraction rate (W/m) from the thesis raster at that pixel.</p>
+      </div>
+      <div class="how-step">
+        <div class="step-num">→ 02 / CONFIGURE</div>
+        <h4>Set parameters</h4>
+        <p>Enter heating demand (kW), optional budget, and whether you want cooling or hot water on top of heating.</p>
+      </div>
+      <div class="how-step">
+        <div class="step-num">→ 03 / CALCULATE</div>
+        <h4>Get the numbers</h4>
+        <p>The backend computes recommended depth, sustainable output, and a full German-market cost breakdown.</p>
+      </div>
+      <div class="how-step">
+        <div class="step-num">→ 04 / EXPORT</div>
+        <h4>Download PDF</h4>
+        <p>Gemini writes a personalized site interpretation. Download the full multi-page report for your records.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="explainer-section">
+    <div class="sec-header">
+      <div class="sec-eyebrow">§ Tech stack</div>
+      <h2>Real data, <em>real tools</em>.</h2>
+      <p class="lead">Pre-computed thesis data + serverless compute + AI interpretation, all running for free.</p>
+    </div>
+    <div class="tech-grid">
+      <div class="tech-block">
+        <span class="label">Data</span>
+        <p>4 pre-computed JSON files from my thesis (2 SSP scenarios × 2 ensemble statistics), 5 km resolution across Germany.</p>
+      </div>
+      <div class="tech-block">
+        <span class="label">Frontend</span>
+        <p>Vanilla HTML / CSS / JS, Leaflet maps with custom pixel rendering via chroma-js, jsPDF for client-side reports.</p>
+      </div>
+      <div class="tech-block">
+        <span class="label">Backend & AI</span>
+        <p>Vercel serverless functions handle depth and cost calculations. Google Gemini writes site interpretations.</p>
+      </div>
+      <div class="tech-block">
+        <span class="label">Hosting</span>
+        <p>Vercel free tier with GitHub auto-deploy. Total infrastructure cost: <strong>€0 / month</strong>.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
 
 <footer>
   <div class="footer-inner">
