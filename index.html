@@ -328,6 +328,28 @@ main {
   margin-bottom: 24px;
   line-height: 1.6;
 }
+.info-callout.tech {
+  border-left-color: var(--accent);
+  color: var(--ink-soft);
+}
+.info-callout.tech a {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--accent);
+  text-decoration: none;
+}
+.info-callout.tech a:hover {
+  color: var(--accent-deep);
+  border-bottom-color: var(--accent-deep);
+}
+.hero .tech-tag {
+  display: block;
+  margin-top: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
 
 /* ============ TWO-COLUMN LAYOUT: MAP + FORM ============ */
 .workspace {
@@ -971,10 +993,15 @@ select {
     <div class="eyebrow">→ Site-specific geothermal feasibility</div>
     <h1>Should you drill a <em>borehole</em> here?</h1>
     <p>Click a site on the map of Germany to read the sustainable geothermal extraction rate at that exact location, then get a depth, output and cost estimate. Powered by real thesis data, 5 km resolution.</p>
+    <span class="tech-tag">→ Built with Vercel serverless · Node.js · Leaflet · jsPDF · Google Gemini</span>
   </section>
 
   <div class="info-callout">
     Results are estimates from CMIP6 ensemble averages at 5 km resolution. Local geology, groundwater, and permits will shift the real numbers. Use this as a first-pass feasibility tool, not a final design.
+  </div>
+
+  <div class="info-callout tech">
+    Built as a portfolio project: interactive map + cost-modeling backend + AI interpretation + downloadable PDF report. <a href="https://github.com/VaibhavJ97/bhe-recommender" target="_blank">View the source on GitHub</a>.
   </div>
 
   <section class="workspace">
