@@ -1505,18 +1505,10 @@ footer a { color: var(--ink-soft); }
         }).addTo(tempMap);
       }
 
-      // Add the data overlay if currentDataset is loaded
-      if (currentDataset) {
-        const arr = currentDataset.layers[LAYER_NAME];
-        if (arr) {
-          const dataUrl = renderRaster(currentDataset);
-          if (dataUrl) {
-            const e = currentDataset.extent;
-            const bounds = [[e.ymin, e.xmin], [e.ymax, e.xmax]];
-            L.imageOverlay(dataUrl, bounds, { opacity: 0.85 }).addTo(tempMap);
-          }
-        }
-      }
+      // Note: we deliberately do NOT add the colored heat-extraction data overlay here.
+      // The data is summarized in the report numbers, and the rectangular raster
+      // extends past Germany's borders, which looks awkward in a printed PDF.
+      // The PDF map's job is to document WHERE the site is, not re-display the data.
 
       // Add the click marker
       const icon = L.divIcon({
