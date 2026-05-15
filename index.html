@@ -1466,6 +1466,22 @@ footer a { color: var(--ink-soft); }
     const mapEl = document.getElementById('map');
     if (!mapEl) return null;
 
+    // Save current map view so we can restore it after the screenshot
+    const savedCenter = map.getCenter();
+    const savedZoom = map.getZoom();
+
+    // Temporarily fit the map to Germany bounds (with a tight padding) so the screenshot
+    // shows just Germany and the click site, not neighboring countries
+    const germanyBounds = L.latLngBounds(
+      [47.27, 5.87],   // SW corner
+      [55.10, 15.05]   // NE corner
+    );
+    map.fitBounds(germanyBounds, { padding: [10, 10], animate: false });
+
+    // Give the tiles a moment to render at the new zoom level
+    await new Promise(resolve => setTimeout(resolve, 400));
+
+    let result = null;
     try {
       const canvas = await html2canvas(mapEl, {
         useCORS: true,
@@ -1474,7 +1490,7 @@ footer a { color: var(--ink-soft); }
         scale: 1.5,
         backgroundColor: '#f1ebe1',
       });
-      return {
+      result = {
         dataUrl: canvas.toDataURL('image/jpeg', 0.85),
         width: canvas.width,
         height: canvas.height,
@@ -1482,8 +1498,12 @@ footer a { color: var(--ink-soft); }
       };
     } catch (err) {
       console.warn('Map capture failed:', err);
-      return null;
     }
+
+    // Restore the original view so the user keeps their context
+    map.setView(savedCenter, savedZoom, { animate: false });
+
+    return result;
   }
 
   function buildPDFContent(doc, data, mapImage) {
