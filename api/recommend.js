@@ -246,18 +246,7 @@ Write naturally as one paragraph. No bullet points. No em dashes. No emojis. Alw
 
     if (apiKey) {
       try {
-        // Try once
         aiExplanation = await callGemini();
-
-        // If response is suspiciously short (under 2 sentences), retry once
-        if (!aiExplanation || aiExplanation.length < 200 || (aiExplanation.match(/[.!?]/g) || []).length < 2) {
-          console.log('First response was short or missing, retrying once');
-          await new Promise(r => setTimeout(r, 500));
-          const retryResult = await callGemini();
-          if (retryResult && retryResult.length > (aiExplanation?.length || 0)) {
-            aiExplanation = retryResult;
-          }
-        }
       } catch (err) {
         console.error('Gemini call failed:', err);
       }
