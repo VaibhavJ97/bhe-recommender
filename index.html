@@ -364,6 +364,24 @@ main {
   color: var(--accent);
   text-transform: uppercase;
 }
+.hero .tech-tag a {
+  color: var(--accent);
+  border-bottom: 1px dotted var(--accent);
+  text-decoration: none;
+}
+.hero .tech-tag a:hover {
+  color: var(--accent-deep);
+  border-bottom-color: var(--accent-deep);
+}
+.hero .audience {
+  margin-top: 10px;
+  font-size: 0.88rem;
+  color: var(--ink-faint);
+  font-style: italic;
+  max-width: 640px;
+  margin-left: auto;
+  margin-right: auto;
+}
 
 /* ============ TWO-COLUMN LAYOUT: MAP + FORM ============ */
 .workspace {
@@ -998,6 +1016,7 @@ select {
     <a href="https://vaibhavj97-thesis.vercel.app">Master Thesis Project</a>
     <a href="https://vaibhavj97-geochat.vercel.app">GeoChat</a>
     <a href="https://vaibhavj97-bhe.vercel.app" class="active">BHE Recommender</a>
+    <a href="https://github.com/VaibhavJ97" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub profile">GitHub</a>
   </nav>
 </header>
 
@@ -1007,15 +1026,12 @@ select {
     <div class="eyebrow">→ Site-specific geothermal feasibility</div>
     <h1>Should you drill a <em>borehole</em> here?</h1>
     <p>Click a site on the map of Germany to read the sustainable geothermal extraction rate at that exact location, then get a depth, output and cost estimate. Powered by real thesis data, 5 km resolution.</p>
-    <span class="tech-tag">→ Built with Vercel serverless · Node.js · Leaflet · jsPDF · Google Gemini</span>
+    <p class="audience">For homeowners considering geothermal, students learning the field, or anyone curious about a specific site in Germany.</p>
+    <span class="tech-tag">→ Built with Vercel serverless · Node.js · Leaflet · jsPDF · Google Gemini · <a href="https://github.com/VaibhavJ97/bhe-recommender" target="_blank" rel="noopener">source on GitHub</a></span>
   </section>
 
   <div class="info-callout">
-    Results are estimates from CMIP6 ensemble averages at 5 km resolution. Local geology, groundwater, and permits will shift the real numbers. Use this as a first-pass feasibility tool, not a final design.
-  </div>
-
-  <div class="info-callout tech">
-    Built as a portfolio project: interactive map + cost-modeling backend + AI interpretation + downloadable PDF report. <a href="https://github.com/VaibhavJ97/bhe-recommender" target="_blank">View the source on GitHub</a>.
+    First-pass estimate, not engineering advice. Values come from CMIP6 ensemble averages at 5 km resolution; local geology, groundwater, and permits will shift the real numbers. See the methodology and disclaimer in any generated PDF report.
   </div>
 
   <section class="workspace">
@@ -1189,7 +1205,7 @@ select {
   <div class="footer-inner">
     <div>
       <h4>Let's connect</h4>
-      <p>Questions about the BHE recommendation methodology, the cost model, or applying this to a real site? Reach out for technical discussions or collaboration.</p>
+      <p>Questions about the BHE recommendation methodology, the cost model, the Node.js calculation backend, or the PDF generation pipeline? Reach out for technical discussions. Currently open to roles in Python, web development, data engineering, and AI integration.</p>
     </div>
     <div>
       <h4>Navigate</h4>
