@@ -1479,22 +1479,50 @@ footer a { color: var(--ink-soft); }
     map.fitBounds(germanyBounds, { padding: [10, 10], animate: false });
 
     // Give the tiles a moment to render at the new zoom level
-    await new Promise(resolve => setTimeout(resolve, 400));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     let result = null;
     try {
-      const canvas = await html2canvas(mapEl, {
+      const fullCanvas = await html2canvas(mapEl, {
         useCORS: true,
         allowTaint: true,
         logging: false,
         scale: 1.5,
         backgroundColor: '#f1ebe1',
       });
+
+      // Crop the canvas to a portrait-ish window centered on Germany.
+      // The container is wide, but Germany is tall, so Leaflet zooms out and shows
+      // wide horizontal margins of neighboring countries. We crop those off.
+      const fullW = fullCanvas.width;
+      const fullH = fullCanvas.height;
+      // Germany aspect is roughly 1:1.2 (wider than tall is wrong, Germany is taller).
+      // Target crop aspect: 1.2:1 (slightly wider than tall) looks nicest in the PDF box
+      const targetAspect = 1.2;
+      let cropW, cropH;
+      if (fullW / fullH > targetAspect) {
+        // Source is wider than target -> crop horizontally
+        cropH = fullH;
+        cropW = Math.round(cropH * targetAspect);
+      } else {
+        // Source is taller than target -> crop vertically
+        cropW = fullW;
+        cropH = Math.round(cropW / targetAspect);
+      }
+      const cropX = Math.round((fullW - cropW) / 2);
+      const cropY = Math.round((fullH - cropH) / 2);
+
+      const cropCanvas = document.createElement('canvas');
+      cropCanvas.width = cropW;
+      cropCanvas.height = cropH;
+      const ctx = cropCanvas.getContext('2d');
+      ctx.drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
       result = {
-        dataUrl: canvas.toDataURL('image/jpeg', 0.85),
-        width: canvas.width,
-        height: canvas.height,
-        aspect: canvas.width / canvas.height,
+        dataUrl: cropCanvas.toDataURL('image/jpeg', 0.85),
+        width: cropW,
+        height: cropH,
+        aspect: cropW / cropH,
       };
     } catch (err) {
       console.warn('Map capture failed:', err);
