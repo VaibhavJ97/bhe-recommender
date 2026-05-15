@@ -1600,11 +1600,11 @@ footer a { color: var(--ink-soft); }
       } catch (e) {
         console.warn('Failed to embed map image:', e);
       }
-      // Caption (below the map)
+      // Caption (below the map, with safe gap)
       doc.setTextColor(...COL_INK_FAINT);
       doc.setFont('helvetica', 'italic');
       doc.setFontSize(7);
-      doc.text(`Site location at ${s.coordinates.lat.toFixed(3)}°N, ${s.coordinates.lng.toFixed(3)}°E`, M_LEFT, mapY + mapH + 4);
+      doc.text(`Site location at ${s.coordinates.lat.toFixed(3)}°N, ${s.coordinates.lng.toFixed(3)}°E`, M_LEFT, mapY + mapH + 6);
     }
 
     // Right column: site detail key-value pairs
@@ -1637,7 +1637,7 @@ footer a { color: var(--ink-soft); }
     });
 
     // Move past map and its caption with proper spacing before next section
-    y = mapY + mapH + 14;
+    y = mapY + mapH + 18;
 
     // -------- COST BREAKDOWN --------
     if (y > 220) { doc.addPage(); y = 20; }
