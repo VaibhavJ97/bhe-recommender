@@ -1432,8 +1432,8 @@ footer a { color: var(--ink-soft); }
     pdfBtn.innerHTML = '<span class="pdf-spinner"></span> Generating PDF...';
 
     try {
-      // Capture map screenshot first
-      const mapImage = await captureMapImage();
+      // No map capture - PDF is text-only for cleaner output and faster generation
+      const mapImage = null;
 
       // Build the PDF using jsPDF
       const { jsPDF } = window.jspdf;
@@ -1657,44 +1657,14 @@ footer a { color: var(--ink-soft); }
 
     y += numBoxH + 8;
 
-    // -------- TWO-COLUMN: MAP + SITE DETAILS --------
-    const colW = (CONTENT_W - 6) / 2;
-    const mapY = y;
-    // Calculate map height from its actual aspect ratio so it doesn't distort
-    let mapH = 70;
-    if (mapImage && mapImage.aspect) {
-      mapH = colW / mapImage.aspect;
-      // Clamp to sensible range
-      if (mapH < 50) mapH = 50;
-      if (mapH > 85) mapH = 85;
-    }
-
-    // Left column: map screenshot
-    if (mapImage && mapImage.dataUrl) {
-      doc.setDrawColor(...COL_LINE);
-      doc.setLineWidth(0.3);
-      doc.rect(M_LEFT, mapY, colW, mapH);
-      try {
-        doc.addImage(mapImage.dataUrl, 'JPEG', M_LEFT + 0.3, mapY + 0.3, colW - 0.6, mapH - 0.6);
-      } catch (e) {
-        console.warn('Failed to embed map image:', e);
-      }
-      // Caption (below the map, with safe gap)
-      doc.setTextColor(...COL_INK_FAINT);
-      doc.setFont('helvetica', 'italic');
-      doc.setFontSize(7);
-      doc.text(`Site location at ${s.coordinates.lat.toFixed(3)}°N, ${s.coordinates.lng.toFixed(3)}°E`, M_LEFT, mapY + mapH + 6);
-    }
-
-    // Right column: site detail key-value pairs
-    const rightX = M_LEFT + colW + 6;
-    let ry = mapY;
+    // -------- SITE DETAILS (full width, no map) --------
     doc.setTextColor(...COL_INK);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('Site details', rightX, ry + 4);
-    ry += 9;
+    doc.setFontSize(11);
+    doc.text('Site details', M_LEFT, y);
+    y += 7;
 
+    // 2x3 grid of detail items
     const details = [
       ['Sustainable extraction rate', `${s.q_used} W/m`],
       ['Yield class', s.yield_label],
@@ -1703,20 +1673,31 @@ footer a { color: var(--ink-soft); }
       ['Ensemble statistic', statLabel],
     ];
 
-    details.forEach(([label, value]) => {
+    const detailColW = (CONTENT_W - 6) / 2;
+    const detailRowH = 13;
+    details.forEach((d, i) => {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const dx = M_LEFT + col * (detailColW + 6);
+      const dy = y + row * detailRowH;
+
+      // Subtle background box
+      doc.setFillColor(...COL_BG_ALT);
+      doc.rect(dx, dy, detailColW, detailRowH - 2, 'F');
+
       doc.setTextColor(...COL_INK_FAINT);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
-      doc.text(label.toUpperCase(), rightX, ry);
+      doc.text(d[0].toUpperCase(), dx + 3, dy + 4);
+
       doc.setTextColor(...COL_INK);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(value, rightX, ry + 4);
-      ry += 8;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(d[1], dx + 3, dy + 9);
     });
 
-    // Move past map and its caption with proper spacing before next section
-    y = mapY + mapH + 18;
+    // Advance y past the grid
+    y += Math.ceil(details.length / 2) * detailRowH + 6;
 
     // -------- COST BREAKDOWN --------
     if (y > 220) { doc.addPage(); y = 20; }
