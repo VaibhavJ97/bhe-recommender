@@ -97,6 +97,70 @@ html, body {
   .portfolio-nav { gap: 18px; font-size: 0.82rem; }
 }
 
+/* ============ FOOTER (3-column unified style) ============ */
+footer {
+  background: var(--ink);
+  color: var(--bg);
+  padding: 60px 40px 24px;
+  margin-top: 60px;
+  border-top: none;
+  text-align: left;
+}
+.footer-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 40px;
+}
+.footer-inner h4 {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+  font-weight: 500;
+}
+.footer-inner p {
+  color: rgba(250, 247, 242, 0.7);
+  font-size: 0.92rem;
+  line-height: 1.7;
+  margin: 0;
+  max-width: 460px;
+}
+.footer-inner ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.footer-inner ul li { margin-bottom: 8px; }
+.footer-inner ul a {
+  color: rgba(250, 247, 242, 0.75);
+  font-size: 0.92rem;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.footer-inner ul a:hover { color: var(--accent); }
+.footer-bottom {
+  max-width: 1400px;
+  margin: 40px auto 0;
+  padding-top: 22px;
+  border-top: 1px solid rgba(250, 247, 242, 0.1);
+  display: flex;
+  justify-content: space-between;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  color: rgba(250, 247, 242, 0.5);
+  text-transform: uppercase;
+}
+@media (max-width: 720px) {
+  footer { padding: 40px 20px 20px; }
+  .footer-inner { grid-template-columns: 1fr; gap: 28px; }
+  .footer-bottom { flex-direction: column; gap: 8px; }
+}
+
 /* ============ MAIN LAYOUT ============ */
 main {
   max-width: 1280px;
@@ -761,17 +825,6 @@ select {
 }
 .leaflet-popup-content strong { color: var(--accent-deep); }
 
-/* ============ FOOTER ============ */
-footer {
-  text-align: center;
-  padding: 28px 20px;
-  font-size: 0.8rem;
-  color: var(--ink-faint);
-  border-top: 1px solid var(--line);
-  background: var(--paper);
-}
-footer a { color: var(--ink-soft); }
-
 @media (max-width: 700px) {
   main { padding: 20px 16px 40px; }
   .form-panel { padding: 22px 20px; }
@@ -901,7 +954,33 @@ footer a { color: var(--ink-soft); }
 </main>
 
 <footer>
-  Built by <a href="https://vaibhavj97.vercel.app">Vaibhav Jaiswal</a>. Map data from MSc thesis (KIT, 2026). AI via Google Gemini.
+  <div class="footer-inner">
+    <div>
+      <h4>Let's connect</h4>
+      <p>Questions about the BHE recommendation methodology, the cost model, or applying this to a real site? Reach out for technical discussions or collaboration.</p>
+    </div>
+    <div>
+      <h4>Navigate</h4>
+      <ul>
+        <li><a href="https://vaibhavj97.vercel.app">Home</a></li>
+        <li><a href="https://vaibhavj97-thesis.vercel.app">Master Thesis Project</a></li>
+        <li><a href="https://vaibhavj97-geochat.vercel.app">GeoChat</a></li>
+        <li><a href="https://vaibhavj97-bhe.vercel.app">BHE Recommender</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Contact</h4>
+      <ul>
+        <li><a href="mailto:vaibhavjaiswal1234@gmail.com">vaibhavjaiswal1234@gmail.com</a></li>
+        <li><a href="https://github.com/VaibhavJ97" target="_blank">GitHub</a></li>
+        <li><a href="https://www.linkedin.com/in/vaibhavgeo/" target="_blank">LinkedIn</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 Vaibhav Jaiswal</span>
+    <span>Built with care · Powered by Gemini</span>
+  </div>
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
