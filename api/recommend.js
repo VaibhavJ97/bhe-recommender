@@ -200,17 +200,23 @@ ${budgetStatus ? `User budget: EUR ${budget_eur.toLocaleString('en-US')}, fits w
 
     if (apiKey) {
       try {
-        const prompt = `A user clicked on a specific location in Germany on a map and got this BHE drilling recommendation:
+        const prompt = `Write a personalized BHE drilling recommendation as a single paragraph of exactly 5 sentences. Use the following data:
 
 ${calcSummary}
 
-Write 4-6 complete sentences (each ending in a period) covering:
-1. Verdict: is this a good, average, or weak site for a BHE? Reference the W/m value relative to German averages of 43-50 W/m for sustainable extraction.
-2. Climate context: how does climate change between now and 2100 affect this recommendation? Mention warming numbers if helpful.
-3. Practical consideration: pick ONE relevant factor (local geology, groundwater, urban density, permits, regulations, neighboring properties).
-4. Cost reasonableness: comment on whether the cost per kW is reasonable for this output.
+Required structure (one sentence each, in order):
 
-Interpret the numbers, do not just repeat them. Make sure your last sentence is grammatically complete with a period.`;
+Sentence 1 (VERDICT): State whether this site is favorable, average, or poor for BHE installation, citing the W/m value relative to the German national range of 43-50 W/m.
+
+Sentence 2 (CLIMATE CONTEXT): Explain how climate change affects this site by 2100. Mention the warming under the chosen scenario (SSP 2-4.5 = +1.7 deg C, SSP 5-8.5 = +3.1 deg C) and how this benefits the BHE.
+
+Sentence 3 (TECHNICAL FIT): Comment on whether the recommended depth and output match the user's heating demand well.
+
+Sentence 4 (PRACTICAL CONSIDERATION): Mention ONE local factor to verify (geology, groundwater, permits, urban density, distance to neighbors).
+
+Sentence 5 (COST VERDICT): Comment on whether the cost per kW is reasonable for this output, and end with a concrete recommendation (proceed / get a quote / reconsider).
+
+Each sentence must be complete with a period. Interpret the numbers, do not just repeat them. Do not use em dashes.`;
 
         const geminiResponse = await fetch(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
@@ -235,14 +241,26 @@ Interpret the numbers, do not just repeat them. Make sure your last sentence is 
           const data = await geminiResponse.json();
           aiExplanation = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
           const finishReason = data?.candidates?.[0]?.finishReason;
-          if (finishReason && finishReason !== 'STOP') {
-            console.warn('Gemini finishReason:', finishReason);
-            // If response was truncated, append a graceful note so the text reads as complete
-            if (aiExplanation && !aiExplanation.trim().endsWith('.') && !aiExplanation.trim().endsWith('!') && !aiExplanation.trim().endsWith('?')) {
-              // Trim the trailing incomplete part back to the last full sentence
-              const lastPeriod = aiExplanation.lastIndexOf('.');
-              if (lastPeriod > 50) {
-                aiExplanation = aiExplanation.substring(0, lastPeriod + 1);
+          console.log('Gemini finishReason:', finishReason, 'length:', aiExplanation?.length);
+
+          // Sanitize trailing incomplete sentence regardless of finishReason
+          // (Gemini Flash sometimes stops mid-sentence even with finishReason=STOP)
+          if (aiExplanation) {
+            const text = aiExplanation.trim();
+            // Check if it ends cleanly with sentence-ending punctuation
+            if (!/[.!?]$/.test(text)) {
+              // Find the last REAL sentence end: a period/exclamation/question followed by space and capital letter
+              const sentenceEndRegex = /[.!?]\s+[A-Z]/g;
+              let lastSentenceEnd = -1;
+              let match;
+              while ((match = sentenceEndRegex.exec(text)) !== null) {
+                lastSentenceEnd = match.index + 1;
+              }
+              if (lastSentenceEnd > 80) {
+                aiExplanation = text.substring(0, lastSentenceEnd).trim();
+              } else {
+                // No clear sentence boundary found, append ellipsis to make it clear it's truncated
+                aiExplanation = text + '...';
               }
             }
           }
