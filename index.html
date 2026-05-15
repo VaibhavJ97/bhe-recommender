@@ -1481,8 +1481,6 @@ footer a { color: var(--ink-soft); }
     let tempMap = null;
     try {
       tempMap = L.map(hiddenDiv, {
-        center: [currentClick.lat, currentClick.lng],
-        zoom: 6,
         zoomControl: false,
         attributionControl: false,
         fadeAnimation: false,
@@ -1508,7 +1506,6 @@ footer a { color: var(--ink-soft); }
       // Note: we deliberately do NOT add the colored heat-extraction data overlay here.
       // The data is summarized in the report numbers, and the rectangular raster
       // extends past Germany's borders, which looks awkward in a printed PDF.
-      // The PDF map's job is to document WHERE the site is, not re-display the data.
 
       // Add the click marker
       const icon = L.divIcon({
@@ -1519,8 +1516,13 @@ footer a { color: var(--ink-soft); }
       });
       L.marker([currentClick.lat, currentClick.lng], { icon }).addTo(tempMap);
 
-      // Wait for tiles to load
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // IMPORTANT: invalidateSize to make Leaflet recognize the 600x600 div dimensions
+      // THEN setView so it centers correctly. Order matters.
+      tempMap.invalidateSize();
+      tempMap.setView([currentClick.lat, currentClick.lng], 6, { animate: false });
+
+      // Wait for tiles to load at the new view
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       const canvas = await html2canvas(hiddenDiv, {
         useCORS: true,
