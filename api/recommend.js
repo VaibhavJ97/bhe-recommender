@@ -180,9 +180,8 @@ ${budgetStatus ? `User budget: EUR ${budget_eur.toLocaleString('en-US')}, fits w
     let aiExplanation = null;
     const apiKey = process.env.GEMINI_API_KEY;
 
-    if (apiKey) {
-      try {
-        const prompt = `Write 4 to 6 complete sentences interpreting this BHE drilling recommendation for a homeowner. Make every sentence complete with a period.
+    async function callGemini() {
+      const prompt = `Write 4 to 6 complete sentences interpreting this BHE drilling recommendation for a homeowner. Make every sentence complete with a period.
 
 Data:
 ${calcSummary}
@@ -196,54 +195,68 @@ Cover in this order:
 
 Write naturally as one paragraph. No bullet points. No em dashes. No emojis. Always end with a period.`;
 
-        const geminiResponse = await fetch(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.5, maxOutputTokens: 1500 },
-              safetySettings: [
-                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-              ],
-            }),
-          }
-        );
+      const geminiResponse = await fetch(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.5, maxOutputTokens: 1500 },
+            safetySettings: [
+              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+            ],
+          }),
+        }
+      );
 
-        if (geminiResponse.ok) {
-          const data = await geminiResponse.json();
-          aiExplanation = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
-          const finishReason = data?.candidates?.[0]?.finishReason;
-          console.log('Gemini finishReason:', finishReason, 'length:', aiExplanation?.length);
+      if (!geminiResponse.ok) {
+        console.error('Gemini API non-OK:', geminiResponse.status);
+        return null;
+      }
 
-          // Sanitize trailing incomplete sentence regardless of finishReason
-          // (Gemini Flash sometimes stops mid-sentence even with finishReason=STOP)
-          if (aiExplanation) {
-            const text = aiExplanation.trim();
-            // Check if it ends cleanly with sentence-ending punctuation
-            if (!/[.!?]$/.test(text)) {
-              // Find the last REAL sentence end: a period/exclamation/question followed by space and capital letter
-              const sentenceEndRegex = /[.!?]\s+[A-Z]/g;
-              let lastSentenceEnd = -1;
-              let match;
-              while ((match = sentenceEndRegex.exec(text)) !== null) {
-                lastSentenceEnd = match.index + 1;
-              }
-              if (lastSentenceEnd > 80) {
-                aiExplanation = text.substring(0, lastSentenceEnd).trim();
-              } else {
-                // No clear sentence boundary found, append ellipsis to make it clear it's truncated
-                aiExplanation = text + '...';
-              }
-            }
+      const data = await geminiResponse.json();
+      let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      const finishReason = data?.candidates?.[0]?.finishReason;
+      console.log('Gemini finishReason:', finishReason, 'length:', text?.length);
+
+      // Sanitize trailing incomplete sentence
+      if (text) {
+        text = text.trim();
+        if (!/[.!?]$/.test(text)) {
+          const sentenceEndRegex = /[.!?]\s+[A-Z]/g;
+          let lastSentenceEnd = -1;
+          let match;
+          while ((match = sentenceEndRegex.exec(text)) !== null) {
+            lastSentenceEnd = match.index + 1;
           }
-        } else {
-          console.error('Gemini API non-OK:', geminiResponse.status);
+          if (lastSentenceEnd > 80) {
+            text = text.substring(0, lastSentenceEnd).trim();
+          } else {
+            text = text + '...';
+          }
+        }
+      }
+      return text;
+    }
+
+    if (apiKey) {
+      try {
+        // Try once
+        aiExplanation = await callGemini();
+
+        // If response is suspiciously short (under 2 sentences), retry once
+        if (!aiExplanation || aiExplanation.length < 200 || (aiExplanation.match(/[.!?]/g) || []).length < 2) {
+          console.log('First response was short or missing, retrying once');
+          await new Promise(r => setTimeout(r, 500));
+          const retryResult = await callGemini();
+          if (retryResult && retryResult.length > (aiExplanation?.length || 0)) {
+            aiExplanation = retryResult;
+          }
         }
       } catch (err) {
         console.error('Gemini call failed:', err);
