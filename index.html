@@ -1474,7 +1474,12 @@ footer a { color: var(--ink-soft); }
         scale: 1.5,
         backgroundColor: '#f1ebe1',
       });
-      return canvas.toDataURL('image/jpeg', 0.85);
+      return {
+        dataUrl: canvas.toDataURL('image/jpeg', 0.85),
+        width: canvas.width,
+        height: canvas.height,
+        aspect: canvas.width / canvas.height,
+      };
     } catch (err) {
       console.warn('Map capture failed:', err);
       return null;
@@ -1588,15 +1593,22 @@ footer a { color: var(--ink-soft); }
     // -------- TWO-COLUMN: MAP + SITE DETAILS --------
     const colW = (CONTENT_W - 6) / 2;
     const mapY = y;
-    const mapH = 48;  // map image height in mm
+    // Calculate map height from its actual aspect ratio so it doesn't distort
+    let mapH = 48;
+    if (mapImage && mapImage.aspect) {
+      mapH = colW / mapImage.aspect;
+      // Clamp to sensible range
+      if (mapH < 40) mapH = 40;
+      if (mapH > 70) mapH = 70;
+    }
 
     // Left column: map screenshot
-    if (mapImage) {
+    if (mapImage && mapImage.dataUrl) {
       doc.setDrawColor(...COL_LINE);
       doc.setLineWidth(0.3);
       doc.rect(M_LEFT, mapY, colW, mapH);
       try {
-        doc.addImage(mapImage, 'JPEG', M_LEFT + 0.3, mapY + 0.3, colW - 0.6, mapH - 0.6);
+        doc.addImage(mapImage.dataUrl, 'JPEG', M_LEFT + 0.3, mapY + 0.3, colW - 0.6, mapH - 0.6);
       } catch (e) {
         console.warn('Failed to embed map image:', e);
       }
@@ -1782,11 +1794,14 @@ footer a { color: var(--ink-soft); }
         doc.setTextColor(qCol[0], qCol[1], qCol[2]);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(14);
-        doc.text(`${h.q}`, cx + 3, y + 18);
+        const qText = `${h.q}`;
+        doc.text(qText, cx + 3, y + 18);
+        // Measure the q text width and position W/m right after it with a small gap
+        const qWidth = doc.getTextWidth(qText);
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(...COL_INK_FAINT);
-        doc.text(' W/m', cx + 14, y + 18);
+        doc.text('W/m', cx + 3 + qWidth + 1.5, y + 18);
 
         // Power
         doc.setFont('helvetica', 'normal');
