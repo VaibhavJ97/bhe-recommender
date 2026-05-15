@@ -2,35 +2,17 @@
 // API now accepts a q_lookup value (from map click) and location coordinates
 // instead of a region key. Falls back to region-based lookup for backward compat.
 
-const THESIS_CONTEXT = `
-You are an AI assistant explaining results from a Borehole Heat Exchanger (BHE)
-drilling site recommendation tool. The tool is built by Vaibhav Jaiswal, based on
-his Master's thesis at KIT on climate change impact on shallow geothermal potential
-in Germany.
+const THESIS_CONTEXT = `You explain BHE (borehole heat exchanger) drilling recommendations for a tool built on Vaibhav Jaiswal's MSc thesis at KIT.
 
-# Background from the thesis
+Key facts you can cite:
+- Germany's sustainable BHE potential ranges from 43 to 50 W/m
+- High-yield areas: southwest Germany, Berlin, Munich, Frankfurt, Rhine-Ruhr
+- Low-yield areas: northern and eastern Germany
+- By 2100, subsurface warming: +1.7 deg C under SSP 2-4.5, +3.1 deg C under SSP 5-8.5
+- Warming reduces required drilling depth: roughly 4 m per 1 deg C
+- 100-year sustainable mode keeps ground temperature stable forever
 
-- 8 CMIP6 climate models analyzed, two scenarios (SSP 2-4.5 moderate, SSP 5-8.5 high).
-- Three time horizons: 50 years (depleting), 100 years (depleting), 100 years sustainable.
-- By 2100, subsurface warming is +1.7 deg C (SSP 2-4.5) to +3.1 deg C (SSP 5-8.5).
-- Mean sustainable extraction: 46.05 W/m (SSP 2-4.5) -> 47.39 W/m (SSP 5-8.5).
-- Mean power per 150m BHE: 5503 W (SSP 2-4.5) -> 5603 W (SSP 5-8.5) under sustainable operation.
-- High-yield regions: southwestern Germany, Berlin, Munich, Frankfurt, Rhine-Ruhr.
-- Low-yield regions: northern and eastern Germany.
-- Drilling equivalent rule: each 1 deg C of additional warming reduces required depth by roughly 4 m.
-
-# Style rules
-
-1. Write 4-6 complete sentences. Be specific and cite numbers. Make sure every sentence is grammatically complete with a period at the end.
-2. Use simple English. No jargon unless necessary.
-3. Never use em dashes. Use commas or short sentences.
-4. Never use emojis.
-5. Always reference how the climate context affects this specific recommendation.
-6. Mention one practical consideration (e.g. local geology, groundwater, regulations, urban siting).
-7. Do not invent costs or technical numbers; only explain the ones given to you.
-8. Always respond in clear, professional English.
-9. Structure: open with a one-sentence verdict on the site's potential, then explain why, then climate context, then a practical consideration, then close.
-`;
+Style: clear professional English. No em dashes. No emojis. Use commas or short sentences. Always finish every sentence with a period.`;
 
 // =============================================================================
 // COST CONSTANTS
@@ -200,23 +182,19 @@ ${budgetStatus ? `User budget: EUR ${budget_eur.toLocaleString('en-US')}, fits w
 
     if (apiKey) {
       try {
-        const prompt = `Write a personalized BHE drilling recommendation as a single paragraph of exactly 5 sentences. Use the following data:
+        const prompt = `Write 4 to 6 complete sentences interpreting this BHE drilling recommendation for a homeowner. Make every sentence complete with a period.
 
+Data:
 ${calcSummary}
 
-Required structure (one sentence each, in order):
+Cover in this order:
+- Verdict on the site (compare ${q_used.toFixed(1)} W/m to German range 43-50 W/m).
+- Climate change impact by 2100 under ${scenarioLabel}.
+- Whether the recommended depth fits the heating demand.
+- One practical consideration (geology, groundwater, permits, or urban density).
+- Cost reasonableness and a concrete recommendation (proceed, get a quote, or reconsider).
 
-Sentence 1 (VERDICT): State whether this site is favorable, average, or poor for BHE installation, citing the W/m value relative to the German national range of 43-50 W/m.
-
-Sentence 2 (CLIMATE CONTEXT): Explain how climate change affects this site by 2100. Mention the warming under the chosen scenario (SSP 2-4.5 = +1.7 deg C, SSP 5-8.5 = +3.1 deg C) and how this benefits the BHE.
-
-Sentence 3 (TECHNICAL FIT): Comment on whether the recommended depth and output match the user's heating demand well.
-
-Sentence 4 (PRACTICAL CONSIDERATION): Mention ONE local factor to verify (geology, groundwater, permits, urban density, distance to neighbors).
-
-Sentence 5 (COST VERDICT): Comment on whether the cost per kW is reasonable for this output, and end with a concrete recommendation (proceed / get a quote / reconsider).
-
-Each sentence must be complete with a period. Interpret the numbers, do not just repeat them. Do not use em dashes.`;
+Write naturally as one paragraph. No bullet points. No em dashes. No emojis. Always end with a period.`;
 
         const geminiResponse = await fetch(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + apiKey,
@@ -226,7 +204,7 @@ Each sentence must be complete with a period. Interpret the numbers, do not just
             body: JSON.stringify({
               system_instruction: { parts: [{ text: THESIS_CONTEXT }] },
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+              generationConfig: { temperature: 0.5, maxOutputTokens: 1500 },
               safetySettings: [
                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
