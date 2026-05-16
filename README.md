@@ -19,6 +19,16 @@ A web app that turns my Master's thesis data into a practical decision tool. Cli
 
 For homeowners considering geothermal, students learning the field, or anyone curious about a specific site in Germany.
 
+## How this was built - AI-pair-programming disclosure
+
+This project was built with **AI-assisted development workflows**. Anthropic Claude was my primary pair-programmer for the Leaflet.js click-to-query interaction, the cost model logic, the jsPDF client-side report generation, and the Vercel serverless function for AI interpretation. ChatGPT helped iterate on the cost model assumptions (German market price ranges). GitHub Copilot handled inline suggestions.
+
+**What was mine**: the product idea (turning thesis data into a homeowner-facing tool), the cost model design and German market research, the choice of client-side PDF generation (no server roundtrip), the disclaimer wording, the use of 4 ensemble JSON files from my thesis output, and every line review before deployment.
+
+**What AI accelerated**: the Leaflet integration, the jsPDF report layout, the Gemini interpretation prompt, and the responsive UI work.
+
+The thesis data underlying this tool was produced by my Python notebook (also AI-assisted, see the [Master Thesis Project README](https://github.com/VaibhavJ97/kit-master-thesis-portfolio)). This app turns that data into something a homeowner can actually use.
+
 ## Tech stack
 
 | Layer | What |
@@ -30,6 +40,7 @@ For homeowners considering geothermal, students learning the field, or anyone cu
 | Cost modeling | Plain JavaScript with German market price ranges |
 | Backend | Vercel serverless function (Node.js) for the AI call only |
 | Hosting | Vercel |
+| Development | AI-pair-programming (Claude, ChatGPT, Copilot) with full manual review |
 | Cost | **0 EUR/month** at portfolio scale |
 
 ## How it works
