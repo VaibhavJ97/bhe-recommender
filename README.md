@@ -43,6 +43,31 @@ The thesis data underlying this tool was produced by my Python notebook (also AI
 | Development | AI-pair-programming (Claude, ChatGPT, Copilot) with full manual review |
 | Cost | **0 EUR/month** at portfolio scale |
 
+## Architecture
+
+```
+Browser (vanilla JS UI + Leaflet map)
+   |
+   ├── Click event → query pixel from ssp245_mean.json
+   ├── Cost model (plain JS) → compute depth, output, cost ranges
+   ├── jsPDF (client-side) → generate downloadable PDF report
+   |
+   ├── Optional: send numbers to Vercel function for AI interpretation
+   |     |
+   |     v
+   |   Vercel serverless function (api/interpret.js)
+   |     |
+   |     v
+   |   Google Gemini API → plain-language summary paragraph
+   |     |
+   |     v
+   |   Reply back to browser
+   |
+   └── Render result card with all numbers + AI text + PDF download button
+```
+
+No backend database. No user accounts. No persistence. Stateless, client-heavy, fully cached at Vercel's edge.
+
 ## How it works
 
 1. User clicks anywhere on the map of Germany
@@ -73,12 +98,6 @@ The thesis data underlying this tool was produced by my Python notebook (also AI
 
 These are conservative ranges. Real costs vary by region, drilling difficulty, contractor pricing, and current material costs.
 
-## Disclaimer
-
-This is a **first-pass feasibility estimate, not engineering advice**. Values come from CMIP6 ensemble averages at 5 km resolution. Local geology, groundwater conditions, surface microclimate, and permitting all shift the real numbers. Treat the output as a starting point for a conversation with a licensed drilling contractor, not a substitute for one.
-
-The PDF report includes a longer version of this disclaimer.
-
 ## Run locally
 
 ```bash
@@ -96,6 +115,7 @@ Requires `GEMINI_API_KEY` in `.env.local` for the AI interpretation feature.
 ```
 .
 ├── index.html              # Main UI
+├── og-preview.png          # 1200x630 social-media preview
 ├── assets/
 │   ├── style.css
 │   └── app.js              # Map, cost model, PDF generation
@@ -109,10 +129,46 @@ Requires `GEMINI_API_KEY` in `.env.local` for the AI interpretation feature.
 └── README.md
 ```
 
+## Citations and references
+
+The data underlying this tool comes from my M.Sc. thesis. If you reference output from this app, cite the thesis:
+
+```
+Jaiswal, V. (2026). Impact of Climate Change on the Geothermal Potential of
+Closed Systems Using GIS and Python. M.Sc. Thesis, Karlsruhe Institute of
+Technology, Germany. Supervisors: PD Dr. Kathrin Menberg, Dr. Susanne Benz.
+```
+
+For the methods that underlie the thesis numbers:
+- Rivera, J. A., Blum, P., & Bayer, P. (2017). *Increased ground temperatures in urban areas: Estimation of the technical geothermal potential.* Renewable Energy, 103, 388-400.
+- SIA 384/6 standard for ground-source heat exchanger systems.
+- CMIP6 (Coupled Model Intercomparison Project Phase 6) climate scenarios.
+
+German cost-range assumptions are based on industry reporting from 2024-2025 (BWP - Bundesverband Wärmepumpe, Verbraucherzentrale, and contractor price surveys). These ranges are approximate, not contracts.
+
+## Disclaimer
+
+This is a **first-pass feasibility estimate, not engineering advice**. Values come from CMIP6 ensemble averages at 5 km resolution. Local geology, groundwater conditions, surface microclimate, and permitting all shift the real numbers. Cost ranges are approximate and depend on drilling difficulty, regional pricing, and current material costs. The AI interpretation (Gemini) is generated text and may contain inaccuracies despite being grounded in the result data.
+
+Treat the output as a starting point for a conversation with a licensed drilling contractor, not a substitute for one. Do not use this tool to make purchasing or installation decisions without independent professional consultation.
+
+The PDF report includes a longer version of this disclaimer.
+
 ## License
 
 MIT for the code. Thesis-derived data follows the same terms as the thesis itself.
 
-## About me
+## About me / Contact
 
-[Portfolio](https://vaibhavj97.vercel.app) · [Thesis project](https://vaibhavj97-thesis.vercel.app) · [GitHub profile](https://github.com/VaibhavJ97) · [LinkedIn](https://www.linkedin.com/in/vaibhavgeo/)
+- **Email**: vaibhavjaiswal1234@gmail.com
+- **Portfolio**: [vaibhavj97.vercel.app](https://vaibhavj97.vercel.app)
+- **LinkedIn**: [linkedin.com/in/vaibhavgeo](https://www.linkedin.com/in/vaibhavgeo/)
+- **GitHub**: [github.com/VaibhavJ97](https://github.com/VaibhavJ97)
+- **Book a 30-min call**: [calendly.com/vaibhavjaiswal1234/30min](https://calendly.com/vaibhavjaiswal1234/30min)
+- **Location**: Karlsruhe, Germany
+
+### My other repos
+
+- [Portfolio homepage](https://github.com/VaibhavJ97/VaibhavJ97.github.io) - the front door
+- [Master Thesis Project](https://github.com/VaibhavJ97/kit-master-thesis-portfolio) - the thesis this tool is built on
+- [GeoChat](https://github.com/VaibhavJ97/geochat) - AI chatbot grounded in the same thesis
